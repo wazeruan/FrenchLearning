@@ -42,13 +42,13 @@
     return {
       version: 1,
       createdAt: dayKey(),
-      settings: { name: '', dailyGoal: 20, autoplay: true, sfx: true, slowAudio: false, unlockAll: false, theme: 'auto', typing: 'tiles' },
+      settings: { name: '', dailyGoal: 20, autoplay: true, sfx: true, slowAudio: false, unlockAll: false, theme: 'auto', typing: 'tiles', speaking: true },
       xp: 0,
       daily: {},          // day -> { xp, lessons, reviews }
       streak: { current: 0, best: 0, lastDay: null },
       units: {},          // unitId -> { completed, bestScore, stars, plays }
       words: {},          // itemId -> { box, due, seen, correct, wrong }
-      stats: { lessons: 0, reviews: 0, perfect: 0, listenCorrect: 0, typedCorrect: 0, totalCorrect: 0, totalAnswered: 0, goalsHit: 0, earlyBird: 0, nightOwl: 0 },
+      stats: { lessons: 0, reviews: 0, perfect: 0, listenCorrect: 0, typedCorrect: 0, totalCorrect: 0, totalAnswered: 0, goalsHit: 0, earlyBird: 0, nightOwl: 0, spokenGood: 0 },
       achievements: {},   // id -> day unlocked
       milestones: {},     // id -> day reached
     };
@@ -64,7 +64,7 @@
     const rs = isObj(raw.settings) ? raw.settings : {};
     s.settings.name = typeof rs.name === 'string' ? rs.name.slice(0, 24) : '';
     s.settings.dailyGoal = GOALS.some((g) => g.xp === rs.dailyGoal) ? rs.dailyGoal : s.settings.dailyGoal;
-    for (const k of ['autoplay', 'sfx', 'slowAudio', 'unlockAll']) if (typeof rs[k] === 'boolean') s.settings[k] = rs[k];
+    for (const k of ['autoplay', 'sfx', 'slowAudio', 'unlockAll', 'speaking']) if (typeof rs[k] === 'boolean') s.settings[k] = rs[k];
     if (['auto', 'light', 'dark'].includes(rs.theme)) s.settings.theme = rs.theme;
     if (TYPING_MODES.includes(rs.typing)) s.settings.typing = rs.typing;
     s.createdAt = day(raw.createdAt, s.createdAt);
@@ -215,6 +215,67 @@
     }
     return out;
   }
+  // ---------- pronunciation ----------
+  function levenshtein(a, b) {
+    const m = a.length, n = b.length;
+    let prev = Array.from({ length: n + 1 }, (_, j) => j);
+    for (let i = 1; i <= m; i++) {
+      const cur = [i];
+      for (let j = 1; j <= n; j++) cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+      prev = cur;
+    }
+    return prev[n];
+  }
+  // Rough French sound-spelling: words that sound alike map to similar strings
+  // (vert / verre / vers, et / est, pain / pin). Applied the same way to both sides.
+  const V = '[aeiouyéèêëàâîïôûùœ]';
+  const PHONETIC_RULES = [
+    [/œu|oeu|eu/g, 'E'], [/eau|au/g, 'o'], [/ou|où|oû/g, 'U'], [/oi|oî/g, 'wa'],
+    [new RegExp(`(ai|ei)n(?!${V}|n|m)`, 'g'), 'I'], [/ai|aî|ei|é|è|ê|ë/g, 'e'], [/(er|ez|et)$/, 'e'],
+    [/qu/g, 'k'], [/c(?=[eiyéèê])/g, 's'], [/ç/g, 's'], [/ch/g, 'S'], [/c|k/g, 'k'], [/ph/g, 'f'], [/gn/g, 'N'],
+    [/g(?=[eiyéèê])/g, 'j'], [/h/g, ''], [/ill/g, 'y'], [/y/g, 'i'],
+    [new RegExp(`(an|am|en|em)(?!${V}|n|m)`, 'g'), 'A'], [new RegExp(`(in|im|un|um)(?!${V}|n|m)`, 'g'), 'I'],
+    [new RegExp(`(on|om)(?!${V}|n|m)`, 'g'), 'O'],
+    [/[àâ]/g, 'a'], [/[îï]/g, 'i'], [/[ôö]/g, 'o'], [/[ûü]/g, 'u'],
+    [/([bcdfgjklmnpqrstvwxz])\1/g, '$1'], [/(?<=.)[esxtdpz]+$/, ''],
+  ];
+  // Words whose final consonant is pronounced, which the silent-ending rule would otherwise drop.
+  const SOUND_EXCEPTIONS = { sept: 'set', huit: 'Uit', six: 'sis', dix: 'dis', cinq: 'sIk', fils: 'fis', neuf: 'nEf', os: 'os', bus: 'bus' };
+  const soundWord = (w) => SOUND_EXCEPTIONS[w] || PHONETIC_RULES.reduce((acc, [re, rep]) => acc.replace(re, rep), w);
+  const words = (text) => normalize(text).replace(/oe/g, 'œ').split(/[\s'-]+/).filter(Boolean);
+  function frenchSound(text) {
+    return words(text).map(soundWord).join('');
+  }
+  // 0..1 similarity between what the recognizer heard and the target, by spelling and by sound.
+  function pronunciationScore(heard, target) {
+    // Compare the words without their articles, so "le chien" gets no credit for "le" against "le chat".
+    // Dropping the article is fine for pronunciation, with a small deduction.
+    const bare = (t) => normalize(t).replace(ARTICLE, '');
+    const tBare = bare(target), hBare = bare(heard);
+    const hasArticle = tBare !== normalize(target);
+    const penalty = hasArticle && hBare === normalize(heard) ? 0.92 : 1;
+    const keys = [(ws) => stripAccents(ws.join('')), (ws) => ws.map(soundWord).join('')]; // by spelling, by sound
+    const tWords = words(tBare), hWords = words(hBare);
+    if (!tWords.length || !hWords.length) return 0;
+    const sim = (a, b) => (a && b ? 1 - levenshtein(a, b) / Math.max(a.length, b.length) : 0);
+    let best = 0;
+    for (const key of keys) {
+      const t = key(tWords), hAll = key(hWords);
+      best = Math.max(best, sim(t, hAll));
+      // The target said inside a longer phrase: match whole spoken words, deducting for the extra speech.
+      for (let i = 0; i < hWords.length; i++) {
+        for (let j = i + 1; j <= Math.min(hWords.length, i + tWords.length + 1); j++) {
+          if (j - i === hWords.length) continue;
+          best = Math.max(best, sim(t, key(hWords.slice(i, j))) * (0.7 + 0.3 * Math.min(1, t.length / hAll.length)));
+        }
+      }
+    }
+    return Math.max(0, Math.min(1, best * penalty));
+  }
+  function pronunciationLevel(score) {
+    return score >= 0.9 ? 'great' : score >= 0.6 ? 'close' : 'retry';
+  }
+
   // Splits a sentence into tiles for the word-order exercise; standalone punctuation sticks to the previous word.
   function tokenize(sentence) {
     const out = [];
@@ -329,6 +390,7 @@
     { id: 'review-10', icon: '♻️', title: 'Assidu', desc: 'Complete 10 reviews', test: (s) => s.stats.reviews >= 10 },
     { id: 'listen-25', icon: '🎧', title: 'Oreille fine', desc: 'Answer 25 listening exercises', test: (s) => s.stats.listenCorrect >= 25 },
     { id: 'typed-25', icon: '⌨️', title: 'Plume d\'or', desc: 'Spell 25 words correctly', test: (s) => s.stats.typedCorrect >= 25 },
+    { id: 'speak-10', icon: '🎤', title: 'Bien dit !', desc: 'Pronounce 10 words well', test: (s) => s.stats.spokenGood >= 10 },
     { id: 'early', icon: '🌅', title: 'Lève-tôt', desc: 'Study before 8 am', test: (s) => s.stats.earlyBird >= 1 },
     { id: 'night', icon: '🦉', title: 'Oiseau de nuit', desc: 'Study after 10 pm', test: (s) => s.stats.nightOwl >= 1 },
     { id: 'xp-500', icon: '⭐', title: 'Étoile montante', desc: 'Earn 500 XP', test: (s) => s.xp >= 500 },
@@ -409,7 +471,7 @@
     dayKey, addDays, diffDays, defaultState, migrate,
     levelFor, todayXp, currentStreak, recordActivity,
     reviewAnswer, dueWords, weakestWords, masteredCount,
-    normalize, checkAnswer, tokenize, letterSlots, spellingTiles, revealPrefix, asChoice,
+    normalize, checkAnswer, tokenize, frenchSound, pronunciationScore, pronunciationLevel, letterSlots, spellingTiles, revealPrefix, asChoice,
     mulberry32, shuffle, allItems, findItem, buildLesson, buildReview,
     completedUnits, unitUnlocked, starsFor, evaluateProgress, completeLesson, completeReview,
   };

@@ -481,3 +481,39 @@ label.btn { cursor: pointer; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }
+
+/* ---------- speaking practice ---------- */
+.speak { --lvl: 0; display: flex; align-items: flex-start; gap: 14px; margin-top: 18px; padding: 14px; border-radius: 16px; background: var(--surface-2); text-align: left; }
+.mic {
+  position: relative; display: grid; place-items: center; flex: none; width: 56px; height: 56px; border-radius: 50%; border: 0;
+  background: var(--red-strong); color: #fff; box-shadow: 0 3px 0 color-mix(in srgb, var(--red-strong) 60%, #000); transition: transform .1s;
+}
+.mic svg { width: 26px; height: 26px; }
+.mic:active { transform: translateY(2px); box-shadow: none; }
+.speak.recording .mic::after {
+  content: ""; position: absolute; inset: -6px; border-radius: 50%; border: 3px solid var(--red);
+  transform: scale(calc(1 + var(--lvl) * .35)); opacity: calc(.35 + var(--lvl) * .65); transition: transform .08s, opacity .08s;
+}
+.speak.thinking .mic { opacity: .6; animation: pulse 1s ease infinite; }
+.speak-body { flex: 1; min-width: 0; }
+.speak-status { margin: 6px 0 0; color: var(--muted); }
+.speak-status b { color: var(--ink); font-family: var(--serif); font-size: 1.1rem; }
+.speak-result { margin-top: 10px; padding: 12px; border-radius: 12px; background: var(--surface); animation: slide .25s ease; }
+.speak-score { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.speak-score b { display: block; font-family: var(--serif); font-size: 1.15rem; }
+.speak-score small { color: var(--muted); }
+.speak-icon { font-size: 1.6rem; }
+.speak-result.great b { color: var(--green); }
+.speak-result.close b { color: #C78A12; }
+.speak-result.retry b { color: var(--red); }
+.meter { flex: 1 0 100%; height: 8px; border-radius: 4px; background: var(--surface-2); overflow: hidden; }
+.meter i { display: block; height: 100%; border-radius: 4px; background: var(--red); }
+.great .meter i { background: var(--green); }
+.close .meter i { background: var(--gold); }
+.heard { margin: 8px 0 0; font-size: .92rem; color: var(--muted); }
+.heard b { color: var(--ink); font-family: var(--serif); font-size: 1.05rem; font-weight: 600; }
+.speak-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.chip-btn { display: inline-flex; align-items: center; gap: 6px; padding: 7px 12px; border-radius: 999px; border: 1.5px solid var(--line); background: var(--surface); font-weight: 600; font-size: .9rem; }
+.chip-btn svg { width: 16px; height: 16px; color: var(--navy); }
+.chip-btn:hover { border-color: var(--navy); }
+.say-fr { display: block; font-family: var(--serif); font-size: 1.6rem; color: var(--navy); }

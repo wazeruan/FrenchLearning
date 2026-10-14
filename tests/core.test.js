@@ -814,3 +814,129 @@ test('asChoice: valid mc-en-fr for every item, retry preserved', () => {
     }
   }
 });
+
+// ---------------------------------------------------------------- pronunciation
+const score = Core.pronunciationScore;
+const level = (h, t) => Core.pronunciationLevel(score(h, t));
+
+test('pronunciationLevel thresholds', () => {
+  assert.equal(Core.pronunciationLevel(1), 'great');
+  assert.equal(Core.pronunciationLevel(0.9), 'great');
+  assert.equal(Core.pronunciationLevel(0.8999), 'close');
+  assert.equal(Core.pronunciationLevel(0.85), 'close');
+  assert.equal(Core.pronunciationLevel(0.6), 'close');
+  assert.equal(Core.pronunciationLevel(0.5999), 'retry');
+  assert.equal(Core.pronunciationLevel(0), 'retry');
+});
+
+test('frenchSound: homophones share a key, applied identically to both sides', () => {
+  const k = Core.frenchSound;
+  assert.equal(k('verre'), k('vert'));
+  assert.equal(k('vers'), k('vert'));
+  assert.equal(k('pin'), k('pain'));
+  assert.equal(k('eau'), 'o');
+  assert.equal(k('au'), 'o');
+  assert.equal(k('Vert!'), k('vert'));
+  assert.notEqual(k('chien'), k('chat'));
+  // Pronounced final consonants are kept.
+  assert.equal(k('sept'), 'set');
+  assert.equal(k('six'), 'sis');
+  assert.notEqual(k('cet'), k('sept'));
+});
+
+test('pronunciation: recogniser variants of the right answer are "great"', () => {
+  const cases = [
+    ['Bonjour!', 'bonjour'], ['BONJOUR', 'bonjour'], ['Comment ça va?', 'comment ça va ?'],
+    ['verre', 'vert'], ['vers', 'vert'], ['pin', 'pain'], ['au', 'eau'],
+    ['Le chat.', 'le chat'], ['chat', 'le chat'], ['oeuf', "l'œuf"], ['œuf', "l'œuf"], ["l'oeuf", "l'œuf"],
+    ['comment ca va', 'comment ça va ?'],
+  ];
+  for (const [h, t] of cases) assert.equal(level(h, t), 'great', `${h} -> ${t}: ${score(h, t)}`);
+  // Exact matches are perfect; a dropped article costs a little but stays below 1.
+  assert.equal(score('Le chat.', 'le chat'), 1);
+  const dropped = score('chat', 'le chat');
+  assert.ok(dropped < 1 && dropped >= 0.9, String(dropped));
+  // Every course item with its article dropped is still "great".
+  for (const it of ITEMS) {
+    const bare = Core.normalize(it.fr).replace(/^(?:les|le|la|une|un|des) +|^l'\s*/, '');
+    if (bare && bare !== Core.normalize(it.fr)) assert.equal(level(bare, it.fr), 'great', `${bare} -> ${it.fr}: ${score(bare, it.fr)}`);
+  }
+});
+
+test('pronunciation: every course item scores 1 against itself and "great" uppercased with a full stop', () => {
+  for (const it of ITEMS) {
+    assert.equal(score(it.fr, it.fr), 1, it.id);
+    const s = score(it.fr.toUpperCase() + '.', it.fr);
+    assert.equal(Core.pronunciationLevel(s), 'great', `${it.id} ${it.fr}: ${s}`);
+  }
+});
+
+test('pronunciation: wrong words are not "great"', () => {
+  assert.notEqual(level('le chien', 'le chat'), 'great');
+  assert.notEqual(level("l'eau", "l'œuf"), 'great');
+  assert.notEqual(level('bonsoir', 'bonjour'), 'great');
+  assert.notEqual(level('cet', 'sept'), 'great');
+  assert.notEqual(level('fromage', "l'eau"), 'great');
+  assert.notEqual(level('le fils', 'la fille'), 'great');
+  // Extra speech around the target lowers the score: "close", not "great".
+  assert.equal(level('Le chat dort.', 'le chat'), 'close');
+  assert.equal(level('merci beaucoup', 'merci'), 'close');
+  assert.equal(level('blah blah fromage', 'le fromage'), 'close');
+  assert.equal(score('', 'bonjour'), 0);
+  assert.equal(score('   ', 'bonjour'), 0);
+});
+
+test('pronunciation: no same-unit wrong-word pair reaches "great"', () => {
+  let pairs = 0;
+  const great = [];
+  for (const u of DATA.units) {
+    for (const a of u.items) for (const b of u.items) {
+      if (a === b || a.fr === b.fr) continue;
+      pairs++;
+      const s = score(a.fr, b.fr); // heard a, target b
+      if (Core.pronunciationLevel(s) === 'great') great.push(`${u.id}: "${a.fr}" for "${b.fr}" = ${s.toFixed(3)}`);
+    }
+  }
+  if (great.length) console.log(`# ${great.length}/${pairs} wrong-word pairs score great:\n# ` + great.join('\n# '));
+  assert.ok(pairs > 0);
+  assert.deepEqual(great, [], `${great.length}/${pairs} wrong pairs are "great"`);
+});
+
+test('pronunciation: score always in [0,1] and never throws on odd input', () => {
+  const odd = ['', ' ', '?!', '...', "'", '-', '🎤', '👋 bonjour 👋', 'a'.repeat(5000), 'le '.repeat(500),
+    'bla '.repeat(500) + 'bonjour', '\u0000', '\n\t', 'ÇA VA ?', 'l’œuf', '123', null, undefined, 42];
+  const targets = ['bonjour', 'le chat', "l'œuf", 'comment ça va ?', '', '?', ...ITEMS.slice(0, 5).map((i) => i.fr)];
+  for (const h of odd) for (const t of targets) {
+    let s;
+    assert.doesNotThrow(() => { s = score(h, t); }, `${String(h).slice(0, 20)} / ${t}`);
+    assert.ok(typeof s === 'number' && Number.isFinite(s) && s >= 0 && s <= 1, `${String(h).slice(0, 20)} / ${t}: ${s}`);
+    assert.ok(['great', 'close', 'retry'].includes(Core.pronunciationLevel(s)));
+  }
+  for (const it of ITEMS) for (const h of ['', '?!', '🎤']) assert.equal(score(h, it.fr), 0, `${JSON.stringify(h)} / ${it.fr}`);
+});
+
+test('speaking: default setting, migration, spokenGood stat and speak-10 achievement', () => {
+  const d = fresh();
+  assert.equal(d.settings.speaking, true);
+  assert.equal(d.stats.spokenGood, 0);
+  assert.equal(Core.migrate({}).settings.speaking, true);
+  assert.equal(Core.migrate({ settings: { speaking: false } }).settings.speaking, false);
+  assert.equal(Core.migrate({ settings: { speaking: true } }).settings.speaking, true);
+  for (const bad of ['no', 0, 1, null, 'false', {}]) assert.equal(Core.migrate({ settings: { speaking: bad } }).settings.speaking, true, String(bad));
+  assert.equal(Core.migrate({ stats: { spokenGood: 7 } }).stats.spokenGood, 7);
+  assert.equal(Core.migrate({ stats: { spokenGood: -3 } }).stats.spokenGood, 0);
+  assert.equal(Core.migrate({ stats: { lessons: 2 } }).stats.spokenGood, 0); // old saves without the field
+
+  const s = fresh();
+  s.stats.spokenGood = 9;
+  let r = Core.evaluateProgress(s, DATA, at(2026, 10, 14));
+  assert.ok(!r.achievements.some((a) => a.id === 'speak-10'));
+  assert.equal(s.achievements['speak-10'], undefined);
+  s.stats.spokenGood = 10;
+  r = Core.evaluateProgress(s, DATA, at(2026, 10, 14));
+  assert.equal(r.achievements.filter((a) => a.id === 'speak-10').length, 1);
+  assert.equal(s.achievements['speak-10'], '2026-10-14');
+  r = Core.evaluateProgress(s, DATA, at(2026, 10, 15));
+  assert.ok(!r.achievements.some((a) => a.id === 'speak-10'), 'unlocks once');
+  assert.equal(s.achievements['speak-10'], '2026-10-14');
+});

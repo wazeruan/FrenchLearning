@@ -54,6 +54,9 @@
     lock: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2" fill="currentColor"/><path d="M8 11V8a4 4 0 0 1 8 0v3" fill="none" stroke="currentColor" stroke-width="2"/></svg>',
     check: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>',
     trophy: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4h10v5a5 5 0 0 1-10 0V4zm0 2H4v2a3 3 0 0 0 3 3m10-5h3v2a3 3 0 0 1-3 3m-5 3v4m-4 3h8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+    mic: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3" fill="currentColor"/><path d="M6 11a6 6 0 0 0 12 0M12 17v4m-3 0h6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>',
+    stop: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="7" width="10" height="10" rx="2" fill="currentColor"/></svg>',
+    play: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13l10-6.5z" fill="currentColor"/></svg>',
     close: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/></svg>',
   };
   const stars = (n, of = 3) => `<span class="stars" aria-label="${n} of ${of} stars">${Array.from({ length: of }, (_, i) => `<i class="${i < n ? 'on' : ''}">${ICON.star}</i>`).join('')}</span>`;
@@ -128,6 +131,222 @@
     b.classList.remove('pulse'); void b.offsetWidth; b.classList.add('pulse');
   });
 
+
+  // ---------- speech (offline pronunciation check) ----------
+  // Recording stays in this browser; recognition runs locally in a worker (js/asr-worker.js).
+  const Speech = {
+    worker: null, loading: null, pending: new Map(), seq: 0, onProgress: null, stopRecording: null, token: 0,
+    missing: false, backend: null, // missing: the model could not be loaded (not installed) — hide speaking UI
+    available() {
+      return /^https?:$/.test(location.protocol) && !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia) &&
+        'MediaRecorder' in window && 'Worker' in window && 'OfflineAudioContext' in window;
+    },
+    enabled() { return state.settings.speaking && this.available() && !this.missing; },
+    load() {
+      if (this.loading) return this.loading;
+      this.loading = new Promise((resolve, reject) => {
+        const fail = (msg) => {
+          this.loading = null;
+          if (this.worker) this.worker.terminate();
+          this.worker = null;
+          for (const p of this.pending.values()) p.reject(new Error(msg));
+          this.pending.clear();
+          reject(new Error(msg));
+        };
+        try { this.worker = new Worker('js/asr-worker.js', { type: 'module' }); }
+        catch (e) { return fail('worker'); }
+        this.worker.onerror = () => { this.missing = !this.backend; fail(this.backend ? 'Speech recognition stopped unexpectedly. Try again.' : 'The speech model is not installed. Run scripts/setup-speech.sh once.'); };
+        this.worker.onmessage = ({ data }) => {
+          if (data.type === 'progress') { if (this.onProgress) this.onProgress(data); }
+          else if (data.type === 'ready') { this.backend = data.backend; resolve(); }
+          else if (data.id === undefined) { this.missing = true; fail('The speech model is not installed. Run scripts/setup-speech.sh once.'); }
+          else {
+            const p = this.pending.get(data.id);
+            this.pending.delete(data.id);
+            if (p) data.type === 'result' ? p.resolve(data.text) : p.reject(new Error(data.message));
+          }
+        };
+        this.worker.postMessage({ type: 'load' });
+      });
+      return this.loading;
+    },
+    // hint: vocabulary given to the recognizer as context (nudges it toward course words).
+    async transcribe(audio, hint) {
+      await this.load();
+      const id = ++this.seq;
+      return new Promise((resolve, reject) => {
+        const limit = this.backend === 'webgpu' ? 20000 : 60000;
+        const timer = setTimeout(() => { this.pending.delete(id); reject(new Error('Recognition took too long. Try again.')); }, limit);
+        this.pending.set(id, { resolve: (v) => { clearTimeout(timer); resolve(v); }, reject: (e) => { clearTimeout(timer); reject(e); } });
+        this.worker.postMessage({ type: 'transcribe', id, audio, hint }, [audio.buffer]);
+      });
+    },
+    // Records until stop() or maxMs; reports the input level (0..1) while recording.
+    // Resolves to null if cancelled (e.g. the learner navigated away during the permission prompt).
+    async record(maxMs, onLevel) {
+      const token = this.token;
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, channelCount: 1 } });
+      let ctx = null, raf = 0, timer = 0;
+      try {
+        if (token !== this.token) return null;
+        const rec = new MediaRecorder(stream);
+        const chunks = [];
+        rec.ondataavailable = (e) => { if (e.data.size) chunks.push(e.data); };
+        const stopped = new Promise((r) => (rec.onstop = r));
+        try {
+          ctx = new (window.AudioContext || window.webkitAudioContext)();
+          const an = ctx.createAnalyser();
+          an.fftSize = 512;
+          ctx.createMediaStreamSource(stream).connect(an);
+          const buf = new Float32Array(an.fftSize);
+          const tick = () => {
+            an.getFloatTimeDomainData(buf);
+            let sum = 0;
+            for (const v of buf) sum += v * v;
+            if (onLevel) onLevel(Math.min(1, Math.sqrt(sum / buf.length) * 6));
+            raf = requestAnimationFrame(tick);
+          };
+          tick();
+        } catch (e) { /* level meter is optional */ }
+        rec.start();
+        this.stopRecording = () => { if (rec.state === 'recording') rec.stop(); };
+        timer = setTimeout(this.stopRecording, maxMs);
+        await stopped;
+        return token === this.token ? new Blob(chunks, { type: rec.mimeType || 'audio/webm' }) : null;
+      } finally {
+        clearTimeout(timer);
+        cancelAnimationFrame(raf);
+        if (ctx) ctx.close().catch(() => {});
+        stream.getTracks().forEach((t) => t.stop());
+        this.stopRecording = null;
+      }
+    },
+    cancel() { this.token++; if (this.stopRecording) this.stopRecording(); },
+    // Decodes a recording to 16 kHz mono and trims silence. Returns { pcm, peak }.
+    async toPcm(blob) {
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      let decoded;
+      try { decoded = await ctx.decodeAudioData(await blob.arrayBuffer()); }
+      catch (e) { return { pcm: new Float32Array(0), peak: 0 }; } // too short to decode: treat as silence
+      finally { ctx.close().catch(() => {}); }
+      const off = new OfflineAudioContext(1, Math.max(1, Math.ceil(decoded.duration * 16000)), 16000);
+      const src = off.createBufferSource();
+      src.buffer = decoded;
+      src.connect(off.destination);
+      src.start();
+      const pcm = (await off.startRendering()).getChannelData(0);
+      const frame = 320, rms = [];
+      for (let i = 0; i < pcm.length; i += frame) {
+        let sum = 0;
+        const end = Math.min(pcm.length, i + frame);
+        for (let j = i; j < end; j++) sum += pcm[j] * pcm[j];
+        rms.push(Math.sqrt(sum / (end - i)));
+      }
+      const peak = Math.max(0, ...rms);
+      const thr = Math.max(0.01, peak * 0.12);
+      const first = rms.findIndex((v) => v > thr), last = rms.length - 1 - [...rms].reverse().findIndex((v) => v > thr);
+      if (first < 0) return { pcm: new Float32Array(0), peak };
+      const pad = 0.2 * 16000;
+      return { pcm: pcm.slice(Math.max(0, first * frame - pad), Math.min(pcm.length, (last + 1) * frame + pad)), peak };
+    },
+  };
+
+  const SPEAK_FEEDBACK = {
+    great: { icon: '🎉', title: 'Excellent !', sub: 'That sounded right.' },
+    close: { icon: '👍', title: 'Presque !', sub: 'Close — listen to Coco and try once more.' },
+    retry: { icon: '🔁', title: 'Essaie encore', sub: 'Listen to Coco first, then say it slowly.' },
+  };
+  function speakWidget(it) {
+    return `<div class="speak" data-speak>
+      <button type="button" class="mic" aria-label="Record yourself saying ${esc(it.fr)}">${ICON.mic}</button>
+      <div class="speak-body"><p class="speak-status">Tap the mic and say <b lang="fr">${fr(it.fr)}</b></p><div class="speak-result" hidden></div></div>
+    </div>`;
+  }
+  // Wires a speak widget: record → recognize locally → score → feedback. onScore(score) after each attempt.
+  function bindSpeak(el, it, onScore) {
+    const mic = $('.mic', el), status = $('.speak-status', el), result = $('.speak-result', el);
+    let busy = false, voiceUrl = null;
+    const setStatus = (html) => { if (el.isConnected) status.innerHTML = html; };
+    const resetMic = () => {
+      el.classList.remove('recording');
+      el.style.setProperty('--lvl', 0);
+      mic.innerHTML = ICON.mic;
+      mic.setAttribute('aria-label', `Record yourself saying ${it.fr}`);
+    };
+    // Free the previous recording once the widget leaves the page.
+    const cleanup = new MutationObserver(() => { if (!el.isConnected) { if (voiceUrl) URL.revokeObjectURL(voiceUrl); cleanup.disconnect(); } });
+    cleanup.observe(document.getElementById('view'), { childList: true });
+    mic.onclick = async () => {
+      if (Speech.stopRecording) { Speech.stopRecording(); return; }
+      if (busy) return;
+      busy = true;
+      const token = Speech.token;
+      Sound.stop();
+      result.hidden = true;
+      try {
+        // Model loading progress is shown only until recording starts.
+        Speech.onProgress = (p) => { if (!el.classList.contains('recording')) setStatus(`Preparing Coco's ears… ${Math.round(p.progress || 0)}%`); };
+        const loading = Speech.load();
+        el.classList.add('recording');
+        mic.innerHTML = ICON.stop;
+        mic.setAttribute('aria-label', 'Stop recording');
+        setStatus('Listening… say it, then tap ■');
+        const blob = await Speech.record(4000, (lvl) => el.style.setProperty('--lvl', lvl.toFixed(2)));
+        resetMic();
+        if (!blob || token !== Speech.token || !el.isConnected) return;
+        el.classList.add('thinking');
+        setStatus(Speech.backend === 'wasm' ? 'Coco is listening back… (this computer has no GPU support, so it can take ~10 s)' : 'Coco is listening back…');
+        const { pcm, peak } = await Speech.toPcm(blob);
+        if (voiceUrl) URL.revokeObjectURL(voiceUrl);
+        voiceUrl = URL.createObjectURL(blob);
+        if (pcm.length < 1600 || peak < 0.008) {
+          setStatus("I didn't hear anything — check your mic and speak a little louder.");
+          return;
+        }
+        await loading;
+        const unit = D.units.find((u) => u.items.some((x) => x.id === it.id));
+        let heard = await Speech.transcribe(pcm, unit ? unit.items.map((x) => x.fr).join(', ') + '.' : '');
+        if (token !== Speech.token || !el.isConnected) return;
+        // On noise Whisper can echo the vocabulary hint back; a long list is not an answer.
+        if (heard.split(/\s+/).length > it.fr.split(/\s+/).length + 4) heard = '';
+        const score = C.pronunciationScore(heard, it.fr);
+        const level = C.pronunciationLevel(score);
+        const f = SPEAK_FEEDBACK[level];
+        Sound.sfx(level === 'great' ? 'good' : level === 'close' ? 'tap' : 'bad');
+        setStatus(`Tap the mic to try again`);
+        result.className = `speak-result ${level}`;
+        result.innerHTML = `
+          <div class="speak-score"><span class="speak-icon">${f.icon}</span><div><b>${f.title}</b><small>${f.sub}</small></div>
+            <span class="meter" aria-label="${Math.round(score * 100)}%"><i style="width:${Math.round(score * 100)}%"></i></span></div>
+          <p class="heard">Coco heard: <b lang="fr">${heard ? '«&nbsp;' + esc(heard) + '&nbsp;»' : '(nothing clear)'}</b></p>
+          <div class="speak-actions">
+            <button type="button" class="chip-btn" data-voice>${ICON.play} Your voice</button>
+            <button type="button" class="chip-btn" data-audio="${it.id}">${ICON.speaker} Coco</button>
+          </div>`;
+        result.hidden = false;
+        $('[data-voice]', result).onclick = () => { Sound.stop(); const a = new Audio(voiceUrl); Sound.current = a; a.play().catch(() => {}); };
+        if (level === 'great') {
+          state.stats.spokenGood++;
+          const { achievements } = C.evaluateProgress(state, D);
+          save();
+          achievements.forEach((a) => toast(a.icon, `Achievement: ${a.title}`, a.desc));
+        }
+        if (onScore) onScore(score);
+      } catch (err) {
+        resetMic();
+        if (!el.isConnected) return;
+        if (Speech.missing) { el.hidden = true; toast('🎤', 'Speaking practice unavailable', 'Run scripts/setup-speech.sh once to install the speech model.'); return; }
+        const denied = err && (err.name === 'NotAllowedError' || err.name === 'SecurityError');
+        setStatus(denied
+          ? 'Microphone access is blocked. Allow it from the browser’s address bar, then try again.'
+          : esc((err && err.message) || 'Something went wrong with speech recognition.'));
+      } finally {
+        busy = false;
+        el.classList.remove('thinking');
+      }
+    };
+  }
+
   // ---------- toasts & confetti ----------
   function toast(icon, title, sub = '') {
     const el = document.createElement('div');
@@ -188,6 +407,7 @@
     Sound.stop();
     keyHandler = null;
     timers.forEach(clearTimeout); timers = [];
+    Speech.cancel();
     session = null;
     const [name, arg] = location.hash.replace(/^#\/?/, '').split('/');
     const routes = { '': home, unit: unitIntro, learn, practice: startPractice, review, progress, settings };
@@ -338,6 +558,7 @@
     let i = 0;
     const draw = () => {
       const it = u.items[i];
+      Speech.cancel();
       view.innerHTML = `
         <div class="session-head">
           <a class="icon-btn" href="#/unit/${u.id}" aria-label="Close">${ICON.close}</a>
@@ -350,6 +571,7 @@
           <div class="audio-row">${speakerBtn(it.id, 'Play word', 'big')}<button class="speaker slow" data-audio="${it.id}" data-slow="1" aria-label="Play slowly" title="Play slowly">${ICON.turtle}</button></div>
           <p class="en" lang="en">${esc(it.en)}</p>
           ${it.note ? `<p class="note" lang="en">${esc(it.note)}</p>` : ''}
+          ${Speech.enabled() ? speakWidget(it) : ''}
           <div class="example">
             ${speakerBtn(it.id + '-ex', 'Play example')}
             <div><p class="ex-fr">${fr(it.ex.fr)}</p><p class="ex-en" lang="en">${esc(it.ex.en)}</p></div>
@@ -361,6 +583,10 @@
         </div>`;
       $('#prev').onclick = () => { if (i > 0) { i--; draw(); } };
       $('#next').onclick = () => { if (i < u.items.length - 1) { i++; draw(); } else go(`#/practice/${u.id}`); };
+      if ($('[data-speak]')) {
+        bindSpeak($('[data-speak]'), it);
+        Speech.load().catch(() => {}); // warm up the recognizer in the background
+      }
       if (state.settings.autoplay) later(() => Sound.play(it.id, it.fr), 200);
     };
     keyHandler = (e) => {
@@ -377,14 +603,25 @@
     const t = e.target instanceof Element ? e.target : document.body;
     if (t.matches('input[type=text], textarea') && e.key !== 'Enter') return;
     // Let focused links/buttons handle their own Enter/Space (except the main action buttons).
-    if ((e.key === 'Enter' || e.key === ' ') && t.matches('a, button, select, label') && !t.matches('#check, #continue, #next')) return;
+    if ((e.key === 'Enter' || e.key === ' ') && t.matches('a, button, select, label') && !t.matches('#check, #continue, #next')) {
+      if (!(e.key === 'Enter' && t.matches('.mic') && keyHandler)) return;
+      e.preventDefault(); // Enter on the mic continues the exercise; Space/click records
+    }
     if (keyHandler) keyHandler(e);
   });
 
   function startPractice(id) {
     const u = unitById(id);
     if (!u || !C.unitUnlocked(state, D, D.units.indexOf(u))) return go('#/');
-    runSession({ kind: 'lesson', unit: u, queue: C.buildLesson(D, u.id) });
+    const queue = C.buildLesson(D, u.id);
+    if (Speech.enabled()) {
+      // Two "say it" exercises per lesson: practice only, never counted against your score.
+      const [a, b] = C.shuffle(u.items).slice(0, 2);
+      queue.splice(Math.min(3, queue.length), 0, { type: 'speak', item: a.id });
+      queue.splice(Math.min(9, queue.length), 0, { type: 'speak', item: b.id });
+      Speech.load().catch(() => {}); // warm up the recognizer in the background
+    }
+    runSession({ kind: 'lesson', unit: u, queue });
   }
   function review() {
     renderChrome('review');
@@ -429,6 +666,7 @@
   function closeHref() { return session.kind === 'lesson' ? `#/unit/${session.unit.id}` : '#/review'; }
 
   function nextExercise() {
+    Speech.cancel();
     if (!session.queue.length) return finishSession();
     const ex = session.queue.shift();
     session.current = ex;
@@ -443,7 +681,7 @@
       <section class="exercise" id="ex"></section>
       <div class="feedback" id="fb" role="status" aria-live="polite" hidden></div>
       <div class="session-foot" id="foot"><button class="btn primary wide" id="check" disabled>Check</button></div>`;
-    const renderers = { 'mc-fr-en': exMC, 'mc-en-fr': exMC, listen: exMC, type: exType, match: exMatch, order: exOrder };
+    const renderers = { speak: exSpeak, 'mc-fr-en': exMC, 'mc-en-fr': exMC, listen: exMC, type: exType, match: exMatch, order: exOrder };
     renderers[ex.type](ex);
   }
 
@@ -663,6 +901,22 @@
     keyHandler = (e) => { if (e.key === 'Enter' && (e.target === input || e.target === document.body)) { e.preventDefault(); check(); } };
   }
 
+  function exSpeak(ex) {
+    if (!Speech.enabled()) { session.done++; return nextExercise(); }
+    const it = C.findItem(D, ex.item);
+    $('#ex').innerHTML = `
+      <p class="instr">Say it out loud</p>
+      <div class="prompt-pic">${imgHtml(it, 'lg')}<div><b class="say-fr" lang="fr">${fr(it.fr)}</b><small class="muted">${esc(it.en)}</small></div>${speakerBtn(it.id, 'Hear Coco say it')}</div>
+      ${speakWidget(it)}`;
+    $('#foot').innerHTML = `<button class="btn secondary" id="skip">Skip</button><button class="btn primary" id="continue" disabled>Continue</button>`;
+    const next = () => { session.done++; nextExercise(); };
+    $('#skip').onclick = next;
+    $('#continue').onclick = next;
+    bindSpeak($('[data-speak]'), it, () => { $('#continue').disabled = false; });
+    keyHandler = (e) => { if (e.key === 'Enter' && !$('#continue').disabled) { e.preventDefault(); next(); } };
+    if (state.settings.autoplay) later(() => Sound.play(it.id, it.fr), 250);
+  }
+
   function exMatch(ex) {
     const items = ex.pairs.map((id) => C.findItem(D, id));
     const left = C.shuffle(items), right = C.shuffle(items);
@@ -866,6 +1120,9 @@
         ${toggle('autoplay', 'Auto-play pronunciation', 'Hear each word automatically')}
         ${toggle('slowAudio', 'Slower audio', 'Play French audio at 75% speed')}
         ${toggle('sfx', 'Sound effects', 'Chimes for right and wrong answers')}
+        ${toggle('speaking', 'Speaking practice', Speech.available()
+          ? 'Say words aloud; Coco checks your pronunciation offline'
+          : 'Needs the microphone — open the app with start.command to use it')}
         <label class="setting"><div><b>Writing exercises</b><small>How you spell French words</small></div>
           <select id="typing">${[['tiles', 'Letter tiles (easiest)'], ['keyboard', 'Keyboard + hints'], ['off', 'Off — choose instead']].map(([v, l]) => `<option value="${v}" ${s.typing === v ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
         ${toggle('unlockAll', 'Unlock all units', 'Skip ahead if you already know some French')}

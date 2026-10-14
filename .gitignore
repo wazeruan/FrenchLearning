@@ -6,3 +6,5 @@ node_modules/
 .env
 sheet.tmp.html
 *.tmp.html
+models/
+vendor/
