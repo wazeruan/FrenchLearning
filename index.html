@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="color-scheme" content="light dark">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data: blob:; media-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'none'">
+  <title>Coco · French</title>
+  <link rel="icon" href="assets/img/icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="#/" aria-label="Home">
+      <img src="assets/img/mascot.svg" alt="" width="34" height="34">
+      <span>Coco<em>·</em>French</span>
+    </a>
+    <div class="chips" id="chips"></div>
+  </header>
+
+  <main id="view" tabindex="-1"></main>
+
+  <nav class="tabbar" id="tabbar" aria-label="Main">
+    <a href="#/" data-tab="home"><span class="ti">🏠</span><span>Learn</span></a>
+    <a href="#/review" data-tab="review"><span class="ti">🔁</span><span>Review</span><b class="badge" id="due-badge" hidden></b></a>
+    <a href="#/progress" data-tab="progress"><span class="ti">📈</span><span>Progress</span></a>
+    <a href="#/settings" data-tab="settings"><span class="ti">⚙️</span><span>Settings</span></a>
+  </nav>
+
+  <div id="toasts" aria-live="polite"></div>
+  <canvas id="confetti" aria-hidden="true"></canvas>
+
+  <script src="js/data.js"></script>
+  <script src="js/core.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
