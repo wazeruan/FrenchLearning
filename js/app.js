@@ -42,7 +42,19 @@
       }
       return `<span class="pic dots ${cls}" aria-hidden="true"><svg viewBox="0 0 104 60">${dots}</svg></span>`;
     }
+    if (img.num) return `<span class="pic num ${cls}" aria-hidden="true">${esc(img.num)}</span>`;
+    if (img.clock) return `<span class="pic clock ${cls}" aria-hidden="true">${clockSvg(img.clock)}</span>`;
     return `<span class="pic emoji ${cls}" aria-hidden="true">${img.emoji || '❓'}</span>`;
+  }
+  // Analog clock for "h:mm"; afternoon/evening times also show the 24-hour reading.
+  function clockSvg(t) {
+    const [h, m] = t.split(':').map(Number);
+    const hourA = ((h % 12) + m / 60) * 30, minA = m * 6;
+    const hand = (a, len, w) => `<line x1="50" y1="50" x2="${(50 + len * Math.sin(a * Math.PI / 180)).toFixed(1)}" y2="${(50 - len * Math.cos(a * Math.PI / 180)).toFixed(1)}" stroke-width="${w}" stroke-linecap="round"/>`;
+    const ticks = Array.from({ length: 12 }, (_, i) => `<circle cx="${(50 + 38 * Math.sin(i * Math.PI / 6)).toFixed(1)}" cy="${(50 - 38 * Math.cos(i * Math.PI / 6)).toFixed(1)}" r="${i % 3 ? 1.6 : 2.8}"/>`).join('');
+    return `<svg viewBox="0 0 100 ${h >= 13 ? 122 : 100}"><circle cx="50" cy="50" r="46" class="face"/><g class="ticks">${ticks}</g>
+      <g class="hands">${hand(hourA, 24, 6)}${hand(minA, 34, 4)}</g><circle cx="50" cy="50" r="4" class="pin"/>
+      ${h >= 13 ? `<text x="50" y="118" text-anchor="middle">${h} h ${String(m).padStart(2, '0')}</text>` : ''}</svg>`;
   }
   const speakerBtn = (id, label = 'Play audio', extra = '') =>
     `<button class="speaker ${extra}" data-audio="${id}" aria-label="${label}" title="${label}">${ICON.speaker}</button>`;
@@ -117,7 +129,17 @@
       } catch (e) { /* audio not available */ }
     },
   };
+  // Text of every non-word clip (grammar examples, drills, dialogue lines), for the browser-voice fallback.
+  const CLIP_TEXT = {};
+  for (const u of D.units) {
+    if (u.grammar) {
+      u.grammar.sections.flatMap((x) => x.examples || []).forEach(([t], i) => (CLIP_TEXT[`${u.id}-x${i + 1}`] = t));
+      u.grammar.drills.forEach((d, i) => (CLIP_TEXT[`${u.id}-d${i + 1}`] = C.drillSpeech(d)));
+    }
+    if (u.dialogue) u.dialogue.lines.forEach(([, t], i) => (CLIP_TEXT[`${u.id}-l${i + 1}`] = t));
+  }
   function itemText(audioId) {
+    if (CLIP_TEXT[audioId]) return CLIP_TEXT[audioId];
     const isEx = audioId.endsWith('-ex');
     const item = C.findItem(D, isEx ? audioId.slice(0, -3) : audioId);
     return item ? (isEx ? item.ex.fr : item.fr) : '';
@@ -331,6 +353,9 @@
           save();
           achievements.forEach((a) => toast(a.icon, `Achievement: ${a.title}`, a.desc));
         }
+        const day = state.daily[today()] || (state.daily[today()] = { xp: 0, lessons: 0, reviews: 0, minutes: 0 });
+        day.spoken = (day.spoken || 0) + 1;
+        save();
         if (onScore) onScore(score);
       } catch (err) {
         resetMic();
@@ -410,7 +435,7 @@
     Speech.cancel();
     session = null;
     const [name, arg] = location.hash.replace(/^#\/?/, '').split('/');
-    const routes = { '': home, unit: unitIntro, learn, practice: startPractice, review, progress, settings };
+    const routes = { '': home, unit: unitIntro, learn, grammar: grammarLesson, dialogue: dialogueView, practice: startPractice, review, progress, settings };
     const fn = routes[name] || home;
     try { fn(arg); }
     catch (err) {
@@ -461,31 +486,66 @@
     const i = D.units.findIndex((u) => !(state.units[u.id] && state.units[u.id].completed));
     return i === -1 ? D.units.length - 1 : i;
   }
+  const KIND_LABEL = { grammar: 'Grammar', dialogue: 'Dialogue' };
+  // Suggested skill drill for today: the latest unlocked dialogue, else speaking on the current words.
+  function skillDrill() {
+    const latestFirst = D.units.filter((u, i) => u.dialogue && C.unitUnlocked(state, D, i)).reverse();
+    // The most recent dialogue you've done, otherwise the first one you can open.
+    const d = latestFirst.find((u) => state.units[u.id]) || latestFirst[latestFirst.length - 1];
+    if (d) return { href: `#/dialogue/${d.id}`, label: `🎧 Listen: ${d.title}`, dialogue: true };
+    const u = D.units[nextUnitIndex()];
+    return { href: `#/learn/${u.id}`, label: `🎤 Say the words of “${u.title}” aloud`, dialogue: false };
+  }
+  function todayPlan() {
+    const day = state.daily[today()] || {};
+    const due = C.dueWords(state).length;
+    const next = D.units[nextUnitIndex()];
+    const drill = skillDrill();
+    const hasWords = Object.keys(state.words).length > 0;
+    const steps = [
+      // Nothing to review yet (or nothing due) counts as done.
+      { done: (day.reviews || 0) > 0 || !due, href: hasWords ? '#/review' : `#/unit/${next.id}`, label: due ? `🔁 Review ${due} word${due === 1 ? '' : 's'}` : hasWords ? '🔁 Review — all caught up' : '🔁 Review (after your first lesson)', mins: 5 },
+      { done: (day.lessons || 0) > 0, href: `#/unit/${next.id}`, label: `📘 ${esc(next.title)}`, mins: 15 },
+      { done: drill.dialogue ? (day.listening || 0) > 0 : (day.spoken || 0) > 0, href: drill.href, label: esc(drill.label), mins: 10 },
+    ];
+    const mins = Math.round(day.minutes || 0);
+    return `<section class="card today">
+      <div class="today-head"><h3>Today's 30 minutes</h3><span class="today-min">${mins} min studied</span></div>
+      <ol class="steps">${steps.map((st) => `<li class="${st.done ? 'done' : ''}"><a href="${st.href}">
+        <span class="check">${st.done ? ICON.check : ''}</span><span class="step-label">${st.label}</span><small>~${st.mins} min</small></a></li>`).join('')}</ol>
+    </section>`;
+  }
   function home() {
     renderChrome('home');
     const xpToday = C.todayXp(state), goal = state.settings.dailyGoal;
     const streak = C.currentStreak(state);
-    const due = C.dueWords(state).length;
     const next = D.units[nextUnitIndex()];
     const allDone = C.completedUnits(state, D) === D.units.length;
     let bubble;
     if (xpToday >= goal) bubble = `Objectif atteint ! You hit today's goal. À demain !`;
     else if (streak > 0 && xpToday === 0) bubble = `Keep your <b>${streak}-day</b> streak alive — one lesson is enough.`;
-    else if (!state.stats.lessons) bubble = `I'm Coco. Let's learn your first French words together!`;
+    else if (!state.stats.lessons) bubble = `I'm Coco. Step by step, we'll get you to NCLC 7. Let's start!`;
     else bubble = `${goal - xpToday} XP to go for today's goal. Allez !`;
 
     let path = '';
     D.units.forEach((u, i) => {
+      const stage = D.stages.find((x) => x.units[0] === u.id);
+      if (stage) {
+        const pr = C.stageProgress(state, D, stage.id);
+        path += `<li class="stage-head"><span class="stage-level">${esc(stage.level)}</span>
+          <div><b>Stage ${D.stages.indexOf(stage) + 1} · ${esc(stage.title)}</b><small>${esc(stage.nclc)} · ${esc(stage.en)}</small></div>
+          <span class="stage-count">${pr.done}/${pr.total}</span></li>`;
+      }
       const st = state.units[u.id] || {};
       const unlocked = C.unitUnlocked(state, D, i);
       const current = unlocked && !st.completed && i === nextUnitIndex();
       const cls = st.completed ? 'done' : current ? 'current' : unlocked ? 'open' : 'locked';
       path += `
-        <li class="node ${cls}" style="--i:${i}">
+        <li class="node ${cls} ${u.kind || 'vocab'}" style="--i:${i}">
           <a ${unlocked ? `href="#/unit/${u.id}"` : 'aria-disabled="true"'} class="node-link">
             <span class="node-art"><img src="assets/img/units/${u.cover}.svg" alt="" loading="lazy">${!unlocked ? `<span class="lock">${ICON.lock}</span>` : ''}</span>
             <span class="node-text">
-              <small>Unit ${i + 1}</small>
+              <small>${i + 1}${KIND_LABEL[u.kind] ? ` · ${KIND_LABEL[u.kind]}` : ''}</small>
               <b>${esc(u.title)}</b>
               <span>${esc(u.en)}</span>
               ${st.completed ? stars(st.stars) : current ? '<em class="start-tag">Start</em>' : ''}
@@ -518,11 +578,12 @@
         </div>
         <div class="hero-actions">
           ${allDone ? `<a class="btn primary" href="#/review">Practise your words</a>` : `<a class="btn primary" href="#/unit/${next.id}">${state.units[next.id] ? 'Continue' : 'Start'}: ${esc(next.title)}</a>`}
-          ${due ? `<a class="btn ghost" href="#/review">🔁 Review ${due} word${due === 1 ? '' : 's'}</a>` : ''}
         </div>
       </section>
-      <h2 class="section-title">Your path <small>${C.completedUnits(state, D)} / ${D.units.length} units</small></h2>
-      <ol class="path">${path}</ol>`;
+      ${todayPlan()}
+      <h2 class="section-title">Your path to NCLC 7 <small>${C.completedUnits(state, D)} / ${D.units.length} units</small></h2>
+      <ol class="path">${path}</ol>
+      <p class="muted small center">More stages (A2, exam trainer, B1, B2) are on the way — see ROADMAP.md.</p>`;
   }
 
   // ---------- unit intro ----------
@@ -533,21 +594,32 @@
     if (!C.unitUnlocked(state, D, i)) return go('#/');
     renderChrome('home');
     const st = state.units[u.id];
+    const steps = unitSteps(u);
     view.innerHTML = `
       <a class="back" href="#/">← Back</a>
       <section class="card unit-intro">
         <img class="unit-cover" src="assets/img/units/${u.cover}.svg" alt="">
-        <small class="eyebrow">Unit ${i + 1} · ${u.items.length} words</small>
+        <small class="eyebrow">${i + 1} · ${KIND_LABEL[u.kind] || 'Vocabulary'} · ${u.items.length} ${u.kind === 'vocab' || !u.kind ? 'words' : 'key phrases'}</small>
         <h1>${esc(u.title)}</h1>
         <p class="sub">${esc(u.en)}</p>
         ${st ? `<p>${stars(st.stars)} <small class="muted">Best ${Math.round(st.bestScore * 100)}%</small></p>` : ''}
         <div class="tip"><b>💡 Le saviez-vous ?</b><p>${fr(u.tip)}</p></div>
         <ul class="word-chips">${u.items.map((it) => `<li><button data-audio="${it.id}">${imgHtml(it, 'xs')}<span lang="fr">${fr(it.fr)}</span></button></li>`).join('')}</ul>
-        <div class="row">
-          <a class="btn primary" href="#/learn/${u.id}">📖 Learn the words</a>
-          <a class="btn ${st ? 'secondary' : 'ghost'}" href="#/practice/${u.id}">✏️ ${st ? 'Practise again' : 'Skip to practice'}</a>
-        </div>
+        <ol class="unit-steps">${steps.map((sp, k) => `<li><a class="btn ${k === 0 && !st ? 'primary' : 'secondary'}" href="#/${sp.route}/${u.id}">${sp.label}</a></li>`).join('')}</ol>
       </section>`;
+  }
+  // The guided order of a unit: dialogues start by listening; grammar has its lesson after the forms.
+  function unitSteps(u) {
+    const learnStep = { route: 'learn', label: u.kind === 'grammar' ? '📖 Learn the forms' : u.kind === 'dialogue' ? '📖 Key phrases' : '📖 Learn the words' };
+    const practice = { route: 'practice', label: '✏️ Practice' };
+    if (u.kind === 'grammar') return [learnStep, { route: 'grammar', label: '📘 Grammar lesson' }, practice];
+    if (u.kind === 'dialogue') return [{ route: 'dialogue', label: '🎧 Listen to the dialogue' }, learnStep, practice];
+    return [learnStep, practice];
+  }
+  function nextStep(u, route) {
+    const steps = unitSteps(u);
+    const k = steps.findIndex((sp) => sp.route === route);
+    return steps[k + 1] || null;
   }
 
   // ---------- learn (flashcards) ----------
@@ -556,6 +628,7 @@
     if (!u || !C.unitUnlocked(state, D, D.units.indexOf(u))) return go('#/');
     renderChrome('session');
     let i = 0;
+    const after = nextStep(u, 'learn') || { route: 'practice', label: '✏️ Practice' };
     const draw = () => {
       const it = u.items[i];
       Speech.cancel();
@@ -579,10 +652,10 @@
         </article>
         <div class="session-foot">
           <button class="btn secondary" id="prev" ${i === 0 ? 'disabled' : ''}>← Back</button>
-          <button class="btn primary" id="next">${i === u.items.length - 1 ? 'Start practice →' : 'Next →'}</button>
+          <button class="btn primary" id="next">${i === u.items.length - 1 ? `${after.label} →` : 'Next →'}</button>
         </div>`;
       $('#prev').onclick = () => { if (i > 0) { i--; draw(); } };
-      $('#next').onclick = () => { if (i < u.items.length - 1) { i++; draw(); } else go(`#/practice/${u.id}`); };
+      $('#next').onclick = () => { if (i < u.items.length - 1) { i++; draw(); } else go(`#/${after.route}/${u.id}`); };
       if ($('[data-speak]')) {
         bindSpeak($('[data-speak]'), it);
         Speech.load().catch(() => {}); // warm up the recognizer in the background
@@ -595,6 +668,127 @@
       else if (e.key === ' ') { e.preventDefault(); Sound.play(u.items[i].id, u.items[i].fr); }
     };
     draw();
+  }
+
+  // ---------- grammar lesson ----------
+  function grammarLesson(id) {
+    const u = unitById(id);
+    if (!u || !u.grammar || !C.unitUnlocked(state, D, D.units.indexOf(u))) return go('#/');
+    renderChrome('session');
+    const after = nextStep(u, 'grammar');
+    let x = 0;
+    view.innerHTML = `
+      <div class="session-head">
+        <a class="icon-btn" href="#/unit/${u.id}" aria-label="Close">${ICON.close}</a>
+        <h2 class="session-title">📘 ${esc(u.title)}</h2>
+      </div>
+      ${u.grammar.sections.map((sec) => `
+        <section class="card grammar">
+          <h3>${esc(sec.h)}</h3>
+          ${sec.table ? `<table class="gtable" lang="fr">${sec.table.map(([a, b]) => `<tr><td>${fr(a)}</td><td>${esc(b)}</td></tr>`).join('')}</table>` : ''}
+          ${sec.p ? `<p>${fr(sec.p)}</p>` : ''}
+          ${(sec.examples || []).map(([f, e]) => `<div class="example">${speakerBtn(`${u.id}-x${++x}`, 'Play example')}<div><p class="ex-fr" lang="fr">${fr(f)}</p><p class="ex-en">${esc(e)}</p></div></div>`).join('')}
+        </section>`).join('')}
+      <div class="session-foot"><a class="btn primary wide" href="#/${after.route}/${u.id}">${after.label} →</a></div>`;
+  }
+
+  // ---------- dialogue (listening) ----------
+  function dialogueView(id) {
+    const u = unitById(id);
+    if (!u || !u.dialogue || !C.unitUnlocked(state, D, D.units.indexOf(u))) return go('#/');
+    renderChrome('session');
+    const dlg = u.dialogue;
+    const after = nextStep(u, 'dialogue');
+    const started = Date.now();
+    const questions = dlg.questions.map(([q, en, opts, k]) => ({ q, en, answer: opts[k], options: C.shuffle(opts) }));
+    view.innerHTML = `
+      <div class="session-head">
+        <a class="icon-btn" href="#/unit/${u.id}" aria-label="Close">${ICON.close}</a>
+        <h2 class="session-title">🎧 ${esc(u.title)}</h2>
+      </div>
+      <section class="card dialogue">
+        <p class="scene">${esc(dlg.scene)}</p>
+        <div class="dlg-controls">
+          <button class="btn primary" id="play-all">${ICON.play} Play the dialogue</button>
+          <label class="toggle-chip"><input type="checkbox" id="show-text"> Show text</label>
+          <label class="toggle-chip"><input type="checkbox" id="show-en"> English</label>
+        </div>
+        <p class="muted small">Tip: listen once without the text, answer the questions, then read along.</p>
+        <ol class="lines hide-text hide-en" id="lines">${dlg.lines.map(([who, f, e], k) => `
+          <li class="line ${who === 'A' ? 'a' : 'b'}" data-k="${k}">
+            <button class="speaker" data-audio="${u.id}-l${k + 1}" aria-label="Play line ${k + 1}">${ICON.speaker}</button>
+            <div><small class="who">${esc(dlg.speakers[who][0])}</small><p class="l-fr" lang="fr">${fr(f)}</p><p class="l-en">${esc(e)}</p></div>
+          </li>`).join('')}</ol>
+      </section>
+      <section class="card">
+        <h3>Questions</h3>
+        <ol class="questions">${questions.map((q, n) => `
+          <li data-n="${n}"><p class="q-fr" lang="fr">${fr(q.q)}</p><p class="q-en">${esc(q.en)}</p>
+            <div class="q-opts">${q.options.map((o) => `<button class="option small" lang="fr" data-o="${esc(o)}">${fr(o)}</button>`).join('')}</div></li>`).join('')}</ol>
+        <div id="dlg-result"></div>
+      </section>`;
+    const lines = $('#lines');
+    $('#show-text').onchange = (e) => lines.classList.toggle('hide-text', !e.target.checked);
+    $('#show-en').onchange = (e) => lines.classList.toggle('hide-en', !e.target.checked);
+    // Plays every line in order, highlighting the current one; any navigation or Sound.stop() ends it.
+    let playing = 0;
+    lines.addEventListener('click', (e) => { if (e.target.closest('[data-audio]')) playing++; }, true); // a tapped line stops auto-play
+    $('#play-all').onclick = async () => {
+      const run = ++playing;
+      for (let k = 0; k < dlg.lines.length; k++) {
+        if (run !== playing || !lines.isConnected) { $$('.line', lines).forEach((li) => li.classList.remove('now')); return; }
+        $$('.line', lines).forEach((li) => li.classList.toggle('now', Number(li.dataset.k) === k));
+        await playClip(`${u.id}-l${k + 1}`);
+        await new Promise((r) => later(r, 350));
+      }
+      $$('.line', lines).forEach((li) => li.classList.remove('now'));
+    };
+    let answered = 0, correct = 0;
+    $$('.questions li').forEach((li) => {
+      const q = questions[Number(li.dataset.n)];
+      $$('.option', li).forEach((b) => (b.onclick = () => {
+        if (li.classList.contains('answered')) return;
+        li.classList.add('answered');
+        const ok = b.dataset.o === q.answer;
+        $$('.option', li).forEach((x) => { x.disabled = true; if (x.dataset.o === q.answer) x.classList.add('right'); });
+        if (!ok) b.classList.add('wrong');
+        Sound.sfx(ok ? 'good' : 'bad');
+        answered++; if (ok) correct++;
+        if (answered === questions.length) finishDialogue();
+      }));
+    });
+    function finishDialogue() {
+      const res = C.completeListening(state, D, { correct, total: questions.length }, new Date(), (Date.now() - started) / 60000);
+      save();
+      renderChrome('session');
+      res.achievements.forEach((a) => toast(a.icon, `Achievement: ${a.title}`, a.desc));
+      res.milestones.forEach((m) => toast('🏆', `Milestone: ${m.title}`, m.en));
+      if (res.goalReachedNow) { toast('🎯', 'Objectif du jour atteint !', `Daily goal reached — ${C.currentStreak(state)}-day streak.`); confetti(); Sound.sfx('win'); }
+      $('#dlg-result').innerHTML = `<div class="celebrate"><span class="celebrate-i">${correct === questions.length ? '🎉' : '👂'}</span>
+        <div><b>${correct} / ${questions.length} correct · +${res.xp} XP</b><small>Now listen once more while reading the text.</small></div></div>
+        <div class="row center-row"><a class="btn primary" href="#/${after.route}/${u.id}">${after.label} →</a></div>`;
+      $('#show-text').checked = true; lines.classList.remove('hide-text');
+    }
+  }
+  // Plays one clip and resolves when it ends (or fails / is stopped).
+  function playClip(id) {
+    return new Promise((resolve) => {
+      Sound.stop();
+      const a = new Audio(`assets/audio/${id}.m4a`);
+      a.playbackRate = state.settings.slowAudio ? 0.75 : 1;
+      a.preservesPitch = true;
+      Sound.current = a;
+      // Missing clip: read the line with the browser's French voice instead.
+      const fallback = () => {
+        if (Sound.current !== a || !CLIP_TEXT[id] || !('speechSynthesis' in window)) return resolve();
+        Sound.speak(CLIP_TEXT[id]);
+        const wait = () => (speechSynthesis.speaking ? later(wait, 200) : resolve());
+        later(wait, 300);
+      };
+      a.onended = a.onpause = () => resolve();
+      a.onerror = fallback;
+      a.play().catch((e) => (e && e.name === 'NotSupportedError' ? fallback() : resolve()));
+    });
   }
 
   // ---------- practice sessions ----------
@@ -681,13 +875,13 @@
       <section class="exercise" id="ex"></section>
       <div class="feedback" id="fb" role="status" aria-live="polite" hidden></div>
       <div class="session-foot" id="foot"><button class="btn primary wide" id="check" disabled>Check</button></div>`;
-    const renderers = { speak: exSpeak, 'mc-fr-en': exMC, 'mc-en-fr': exMC, listen: exMC, type: exType, match: exMatch, order: exOrder };
+    const renderers = { fill: exFill, speak: exSpeak, 'mc-fr-en': exMC, 'mc-en-fr': exMC, listen: exMC, type: exType, match: exMatch, order: exOrder };
     renderers[ex.type](ex);
   }
 
   // Records the outcome, shows feedback and queues one retry for mistakes.
   function answered(ex, correct, info = {}) {
-    if (!ex.retry) session.results.push({ item: ex.item || ex.pairs[0], type: ex.type, correct });
+    if (!ex.retry) session.results.push({ item: ex.item || (ex.pairs && ex.pairs[0]) || `${ex.unit}-d${ex.drill + 1}`, type: ex.type, correct });
     if (!correct && !ex.retry && ex.type !== 'match') {
       session.queue.push(Object.assign({}, ex, { retry: true }));
       session.total++;
@@ -700,6 +894,7 @@
     const title = correct ? pick(PRAISE) : pick(ENCOURAGE);
     let detail = '';
     if (info.hint) detail += `<p class="hint">${info.hint}</p>`;
+    if (info.detail) detail += info.detail;
     if (item && ex.type === 'order') detail += `<div class="fb-answer">${speakerBtn(item.id + '-ex')}<div><b lang="fr">${fr(item.ex.fr)}</b><small>${esc(item.ex.en)}</small></div></div>`;
     else if (item) detail += `<div class="fb-answer">${speakerBtn(item.id)}<div><b lang="fr">${fr(item.fr)}</b><small>${esc(item.en)}</small></div></div>`;
     fb.className = `feedback ${correct ? 'good' : 'bad'}`;
@@ -709,6 +904,7 @@
     $('#continue').onclick = nextExercise;
     $('#continue').focus({ preventScroll: true });
     keyHandler = (e) => { if (e.key === 'Enter') { e.preventDefault(); nextExercise(); } };
+    if (info.audio && state.settings.autoplay) later(() => Sound.play(info.audio, itemText(info.audio)), 350);
     if (item && state.settings.autoplay) {
       later(() => (ex.type === 'order' ? Sound.play(item.id + '-ex', item.ex.fr) : Sound.play(item.id, item.fr)), 350);
     }
@@ -901,6 +1097,42 @@
     keyHandler = (e) => { if (e.key === 'Enter' && (e.target === input || e.target === document.body)) { e.preventDefault(); check(); } };
   }
 
+  function exFill(ex) {
+    const u = unitById(ex.unit);
+    const [q, answer, , en] = u.grammar.drills[ex.drill];
+    const audio = `${u.id}-d${ex.drill + 1}`;
+    const [before, afterTxt] = q.split('___');
+    $('#ex').innerHTML = `
+      <p class="instr">Complete the sentence</p>
+      <div class="fill-sentence" lang="fr">${fr(before)}<span class="blank" id="blank">____</span>${fr(afterTxt)}</div>
+      <p class="fill-en">${esc(en)}</p>
+      <div class="options">${ex.options.map((o, k) => `<button class="option" data-o="${esc(o)}" lang="fr"><kbd>${k + 1}</kbd><span>${fr(o)}</span></button>`).join('')}</div>`;
+    let chosen = null;
+    const choose = (b) => {
+      $$('.option').forEach((x) => x.classList.toggle('selected', x === b));
+      chosen = b.dataset.o;
+      $('#blank').textContent = chosen;
+      $('#blank').classList.add('filled');
+      $('#check').disabled = false;
+      Sound.sfx('tap');
+    };
+    $$('.option').forEach((b) => (b.onclick = () => choose(b)));
+    const check = () => {
+      if (!chosen) return;
+      const ok = chosen === answer;
+      $$('.option').forEach((b) => { b.disabled = true; if (b.dataset.o === answer) b.classList.add('right'); else if (b.dataset.o === chosen) b.classList.add('wrong'); });
+      $('#blank').textContent = answer;
+      $('#blank').classList.add(ok ? 'right' : 'wrong');
+      answered(ex, ok, { audio, detail: `<div class="fb-answer">${speakerBtn(audio)}<div><b lang="fr">${fr(C.drillSpeech([q, answer]))}</b><small>${esc(en)}</small></div></div>` });
+    };
+    $('#check').onclick = check;
+    keyHandler = (e) => {
+      const n = Number(e.key), opts = $$('.option');
+      if (n >= 1 && n <= opts.length && !opts[n - 1].disabled) choose(opts[n - 1]);
+      else if (e.key === 'Enter' && chosen) { e.preventDefault(); check(); }
+    };
+  }
+
   function exSpeak(ex) {
     if (!Speech.enabled()) { session.done++; return nextExercise(); }
     const it = C.findItem(D, ex.item);
@@ -989,9 +1221,10 @@
 
   function finishSession() {
     const s = session;
+    const minutes = (Date.now() - s.started) / 60000;
     const res = s.kind === 'lesson'
-      ? C.completeLesson(state, D, s.unit.id, s.results)
-      : C.completeReview(state, D, s.results);
+      ? C.completeLesson(state, D, s.unit.id, s.results, new Date(), minutes)
+      : C.completeReview(state, D, s.results, new Date(), minutes);
     save();
     renderChrome('session');
     keyHandler = null;
@@ -1049,6 +1282,10 @@
     return `<div class="heat" style="--weeks:${weeks}">${cells}</div>
       <div class="heat-legend"><small>Less</small><i class="l0"></i><i class="l1"></i><i class="l2"></i><i class="l3"></i><i class="l4"></i><small>More</small></div>`;
   }
+  function studyTime() {
+    const mins = Object.values(state.daily).reduce((a, d) => a + (d.minutes || 0), 0);
+    return mins < 60 ? `${Math.round(mins)} min` : `${Math.floor(mins / 60)} h ${Math.round(mins % 60)}`;
+  }
   function progress() {
     renderChrome('progress');
     const lv = C.levelFor(state.xp);
@@ -1072,7 +1309,7 @@
         <div class="card stat"><span>🏅</span><b>${state.streak.best}</b><small>Best streak</small></div>
         <div class="card stat"><span>📗</span><b>${Object.keys(state.words).length}</b><small>Words learned</small></div>
         <div class="card stat"><span>🧠</span><b>${C.masteredCount(state)}</b><small>Words mastered</small></div>
-        <div class="card stat"><span>✏️</span><b>${st.lessons}</b><small>Lessons</small></div>
+        <div class="card stat"><span>⏱️</span><b>${studyTime()}</b><small>Study time</small></div>
         <div class="card stat"><span>🎯</span><b>${acc}</b><small>Accuracy</small></div>
       </section>
       <section class="card">

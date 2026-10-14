@@ -74,7 +74,7 @@
       s.streak = { current: num(raw.streak.current), best: num(raw.streak.best), lastDay: day(raw.streak.lastDay) };
     }
     if (isObj(raw.daily)) for (const [k, v] of Object.entries(raw.daily)) {
-      if (day(k) && isObj(v)) s.daily[k] = { xp: num(v.xp), lessons: num(v.lessons), reviews: num(v.reviews) };
+      if (day(k) && isObj(v)) s.daily[k] = { xp: num(v.xp), lessons: num(v.lessons), reviews: num(v.reviews), minutes: num(v.minutes), listening: num(v.listening) };
     }
     if (isObj(raw.units)) for (const [k, v] of Object.entries(raw.units)) {
       if (isObj(v)) s.units[k] = { completed: v.completed === true, bestScore: Math.min(1, num(v.bestScore)), stars: Math.min(3, num(v.stars)), plays: num(v.plays) };
@@ -109,13 +109,16 @@
     return gap >= 0 && gap <= 1 ? state.streak.current : 0;
   }
   // Adds XP for an activity and updates daily log, streak and goal stats. Returns { goalReachedNow }.
-  function recordActivity(state, { xp, kind }, now = new Date()) {
+  // minutes: time spent on the activity (capped so a forgotten open tab doesn't count as study).
+  function recordActivity(state, { xp, kind, minutes = 0 }, now = new Date()) {
     const today = dayKey(now);
-    const day = state.daily[today] || (state.daily[today] = { xp: 0, lessons: 0, reviews: 0 });
+    const day = state.daily[today] || (state.daily[today] = { xp: 0, lessons: 0, reviews: 0, minutes: 0, listening: 0 });
     const before = day.xp;
     day.xp += xp;
+    day.minutes = (day.minutes || 0) + Math.max(0, Math.min(45, minutes));
     if (kind === 'lesson') day.lessons++;
     if (kind === 'review') day.reviews++;
+    if (kind === 'listening') day.listening = (day.listening || 0) + 1;
     state.xp += xp;
 
     const last = state.streak.lastDay;
@@ -230,14 +233,18 @@
   // (vert / verre / vers, et / est, pain / pin). Applied the same way to both sides.
   const V = '[aeiouyéèêëàâîïôûùœ]';
   const PHONETIC_RULES = [
+    // Silent endings first, on the written word (before letters are turned into sounds):
+    // -er/-ez/-et sound like é; then drop silent final consonants, then a final e.
+    // (grandes → grande → "grand"; grand → "gran"; commencer keeps its c-sound.)
+    [/(er|ez|et)$/, 'é'], [/(?<=.)[sxtdpz]+$/, ''], [/(?<=[^aeiouyéèêëgc])e$/, ''], // keep -ge/-ce: the e keeps g and c soft (neige, France)
     [/œu|oeu|eu/g, 'E'], [/eau|au/g, 'o'], [/ou|où|oû/g, 'U'], [/oi|oî/g, 'wa'],
-    [new RegExp(`(ai|ei)n(?!${V}|n|m)`, 'g'), 'I'], [/ai|aî|ei|é|è|ê|ë/g, 'e'], [/(er|ez|et)$/, 'e'],
+    [new RegExp(`(ai|ei)n(?!${V}|n|m)`, 'g'), 'I'], [/ai|aî|ei|é|è|ê|ë/g, 'e'],
     [/qu/g, 'k'], [/c(?=[eiyéèê])/g, 's'], [/ç/g, 's'], [/ch/g, 'S'], [/c|k/g, 'k'], [/ph/g, 'f'], [/gn/g, 'N'],
     [/g(?=[eiyéèê])/g, 'j'], [/h/g, ''], [/ill/g, 'y'], [/y/g, 'i'],
     [new RegExp(`(an|am|en|em)(?!${V}|n|m)`, 'g'), 'A'], [new RegExp(`(in|im|un|um)(?!${V}|n|m)`, 'g'), 'I'],
     [new RegExp(`(on|om)(?!${V}|n|m)`, 'g'), 'O'],
     [/[àâ]/g, 'a'], [/[îï]/g, 'i'], [/[ôö]/g, 'o'], [/[ûü]/g, 'u'],
-    [/([bcdfgjklmnpqrstvwxz])\1/g, '$1'], [/(?<=.)[esxtdpz]+$/, ''],
+    [/([bcdfgjklmnpqrstvwxz])\1/g, '$1'],
   ];
   // Words whose final consonant is pronounced, which the silent-ending rule would otherwise drop.
   const SOUND_EXCEPTIONS = { sept: 'set', huit: 'Uit', six: 'sis', dix: 'dis', cinq: 'sIk', fils: 'fis', neuf: 'nEf', os: 'os', bus: 'bus' };
@@ -266,7 +273,7 @@
       for (let i = 0; i < hWords.length; i++) {
         for (let j = i + 1; j <= Math.min(hWords.length, i + tWords.length + 1); j++) {
           if (j - i === hWords.length) continue;
-          best = Math.max(best, sim(t, key(hWords.slice(i, j))) * (0.7 + 0.3 * Math.min(1, t.length / hAll.length)));
+          best = Math.max(best, sim(t, key(hWords.slice(i, j))) * (0.6 + 0.3 * Math.min(1, t.length / hAll.length)));
         }
       }
     }
@@ -342,7 +349,21 @@
     const sentence = { type: 'order', item: orderItem.id, tiles: shuffle(tokenize(orderItem.ex.fr), rng) };
     // Put the match game in the middle and the sentence builder at the end.
     const mid = Math.floor(singles.length / 2);
-    return singles.slice(0, mid).concat([match], singles.slice(mid), [sentence]);
+    const lesson = singles.slice(0, mid).concat([match], singles.slice(mid));
+    if (!unit.grammar) return lesson.concat([sentence]);
+    // Grammar units: 6 fill-in-the-blank drills, spread through the second half.
+    const drills = shuffle(unit.grammar.drills.map((d, i) => i), rng).slice(0, 6).map((i) => ({
+      type: 'fill', unit: unit.id, drill: i, options: shuffle(unit.grammar.drills[i][2], rng),
+    }));
+    const out = lesson.slice(0, mid + 1);
+    const rest = lesson.slice(mid + 1);
+    drills.forEach((d, k) => { out.push(d); if (rest[k]) out.push(rest[k]); });
+    return out.concat(rest.slice(drills.length), [sentence]);
+  }
+  // The sentence a learner hears for a drill: blank filled in, hints in brackets removed.
+  function drillSpeech([sentence, answer]) {
+    if (/^\d+ = ___$/.test(sentence)) return answer; // "17 = ___" → "dix-sept"
+    return sentence.replace('___', answer).replace(/\s*\([^)]*\)/g, '').replace(/' /g, "'").trim();
   }
   // Turns a typing exercise into a multiple-choice one (used when typing is switched off).
   function asChoice(data, ex, rng = Math.random) {
@@ -363,8 +384,13 @@
   }
   function unitUnlocked(state, data, index) {
     if (index === 0 || state.settings.unlockAll) return true;
-    const prev = data.units[index - 1];
-    return !!(state.units[prev.id] && state.units[prev.id].completed);
+    const done = (u) => !!(state.units[u.id] && state.units[u.id].completed);
+    return done(data.units[index]) || done(data.units[index - 1]);
+  }
+  // Units completed / total within a stage.
+  function stageProgress(state, data, stageId) {
+    const units = data.units.filter((u) => u.stage === stageId);
+    return { done: units.filter((u) => state.units[u.id] && state.units[u.id].completed).length, total: units.length };
   }
   function starsFor(score) {
     return score >= 1 ? 3 : score >= 0.8 ? 2 : 1;
@@ -420,7 +446,7 @@
 
   // ---------- session completion ----------
   // results: [{ item, type, correct }] — first attempt of each exercise (match/order count as one).
-  function completeLesson(state, data, unitId, results, now = new Date()) {
+  function completeLesson(state, data, unitId, results, now = new Date(), minutes = 0) {
     const today = dayKey(now);
     const unit = data.units.find((u) => u.id === unitId);
     const correct = results.filter((r) => r.correct).length;
@@ -441,20 +467,30 @@
     state.stats.lessons++;
     if (perfect) state.stats.perfect++;
 
-    const { goalReachedNow } = recordActivity(state, { xp, kind: 'lesson' }, now);
+    const { goalReachedNow } = recordActivity(state, { xp, kind: 'lesson', minutes }, now);
     const unlocked = evaluateProgress(state, data, now);
     return { xp, correct, total: results.length, score, perfect, stars: starsFor(score), firstCompletion: !wasCompleted, goalReachedNow, ...unlocked };
   }
-  function completeReview(state, data, results, now = new Date()) {
+  function completeReview(state, data, results, now = new Date(), minutes = 0) {
     const today = dayKey(now);
     for (const r of results) reviewAnswer(state, r.item, r.correct, today);
     tallyAnswers(state, results);
     const correct = results.filter((r) => r.correct).length;
     const xp = XP.reviewBase + correct * XP.perCorrect;
     state.stats.reviews++;
-    const { goalReachedNow } = recordActivity(state, { xp, kind: 'review' }, now);
+    const { goalReachedNow } = recordActivity(state, { xp, kind: 'review', minutes }, now);
     const unlocked = evaluateProgress(state, data, now);
     return { xp, correct, total: results.length, score: results.length ? correct / results.length : 0, goalReachedNow, ...unlocked };
+  }
+  // Dialogue comprehension questions: listening practice, 1 XP per correct answer + 2 for finishing.
+  function completeListening(state, data, { correct, total }, now = new Date(), minutes = 0) {
+    state.stats.listenCorrect += correct;
+    state.stats.totalAnswered += total;
+    state.stats.totalCorrect += correct;
+    const xp = 2 + correct;
+    const { goalReachedNow } = recordActivity(state, { xp, kind: 'listening', minutes }, now);
+    const unlocked = evaluateProgress(state, data, now);
+    return { xp, goalReachedNow, ...unlocked };
   }
   function tallyAnswers(state, results) {
     for (const r of results) {
@@ -473,7 +509,7 @@
     reviewAnswer, dueWords, weakestWords, masteredCount,
     normalize, checkAnswer, tokenize, frenchSound, pronunciationScore, pronunciationLevel, letterSlots, spellingTiles, revealPrefix, asChoice,
     mulberry32, shuffle, allItems, findItem, buildLesson, buildReview,
-    completedUnits, unitUnlocked, starsFor, evaluateProgress, completeLesson, completeReview,
+    completedUnits, unitUnlocked, stageProgress, starsFor, evaluateProgress, completeLesson, completeReview, completeListening, drillSpeech,
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = Core;
   else root.Core = Core;

@@ -79,6 +79,51 @@ const covers = {
     <rect x="52" y="72" width="16" height="28" rx="2" fill="${C.navy}" ${S}/>
     <rect x="36" y="62" width="12" height="12" rx="2" fill="${C.sky}" ${S}/><rect x="72" y="62" width="12" height="12" rx="2" fill="${C.sky}" ${S}/>
     <path d="M78 34v-10h8v16" fill="${C.brown}" ${S}/>`, '#E5F1E6'),
+  'grammar-book': svg(`
+    <path d="M60 30c-12-8-28-10-42-8v66c14-2 30 0 42 8z" fill="${C.white}" ${S}/>
+    <path d="M60 30c12-8 28-10 42-8v66c-14-2-30 0-42 8z" fill="${C.white}" ${S}/>
+    <path d="M60 30v66" ${S}/>
+    <text x="26" y="66" font-family="Georgia, serif" font-size="22" font-weight="700" fill="${C.navy}">Aa</text>
+    <path d="M70 48h22M70 58h22M70 68h16" stroke="${C.red}" stroke-width="4" stroke-linecap="round"/>`, '#E3EAF6'),
+  'grammar-pencil': svg(`
+    <rect x="18" y="24" width="62" height="78" rx="8" fill="${C.white}" ${S}/>
+    <path d="M30 44h38M30 58h38M30 72h24" stroke="${C.sky}" stroke-width="4" stroke-linecap="round"/>
+    <g transform="rotate(35 84 60)"><rect x="76" y="20" width="16" height="64" rx="3" fill="${C.gold}" ${S}/>
+    <path d="M76 84l8 16 8-16z" fill="#F5C9A4" ${S}/><rect x="76" y="20" width="16" height="10" rx="3" fill="${C.red}" ${S}/></g>`, '#FFF0C9'),
+  'grammar-puzzle': svg(`
+    <path d="M22 22h32v10a8 8 0 1 0 16 0V22h28v32H88a8 8 0 1 0 0 16h10v28H22z" fill="${C.white}" ${S}/>
+    <path d="M60 22v28h-10a8 8 0 1 0 0 16h10v32" fill="none" ${S}/>
+    <path d="M22 60h28" ${S}/><path d="M70 60h28" ${S}/>
+    <rect x="28" y="28" width="22" height="26" rx="4" fill="${C.red}" opacity=".85"/>
+    <rect x="70" y="72" width="22" height="20" rx="4" fill="${C.navy}" opacity=".85"/>`, '#F7E1EA'),
+  numbers2: svg(`
+    <rect x="16" y="28" width="88" height="64" rx="12" fill="${C.navy}" ${S}/>
+    <text x="60" y="72" text-anchor="middle" font-family="Georgia, serif" font-size="32" font-weight="700" fill="${C.white}">100</text>
+    <circle cx="96" cy="30" r="12" fill="${C.gold}" ${S}/><path d="M91 30h10M96 25v10" stroke="${C.ink}" stroke-width="3" stroke-linecap="round"/>`, '#FFF0C9'),
+  clock: svg(`
+    <circle cx="60" cy="62" r="38" fill="${C.white}" ${S}/>
+    ${Array.from({ length: 12 }, (_, i) => { const a = i * Math.PI / 6; return `<circle cx="${(60 + 30 * Math.sin(a)).toFixed(1)}" cy="${(62 - 30 * Math.cos(a)).toFixed(1)}" r="${i % 3 ? 1.8 : 3}" fill="${C.ink}"/>`; }).join('')}
+    <path d="M60 62V40M60 62l14 8" stroke="${C.navy}" stroke-width="5" stroke-linecap="round"/>
+    <circle cx="60" cy="62" r="4" fill="${C.red}"/>
+    <path d="M30 26l-8-6M90 26l8-6" ${S}/>`, '#DCE8F7'),
+  airport: svg(`
+    <path d="M14 96h92" ${S}/>
+    <path d="M20 70l70-36c8-4 16 2 10 8L64 66l-6 24-8 4 0-20-22 10-6 10-6 2z" fill="${C.white}" ${S}/>
+    <path d="M44 56l-14-14 8-4 22 10" fill="${C.sky}" ${S}/>
+    <path d="M88 20c2 4 6 6 10 6" fill="none" stroke="${C.red}" stroke-width="3" stroke-linecap="round"/>
+    <path d="M80 92l4-8 4 8M78 88h12" stroke="${C.red}" stroke-width="3" stroke-linecap="round" fill="none"/>`, '#DCE8F7'),
+  grocery: svg(`
+    <path d="M14 30h14l12 46h50l10-34H34" fill="none" ${S}/>
+    <circle cx="46" cy="92" r="7" fill="${C.ink}"/><circle cx="84" cy="92" r="7" fill="${C.ink}"/>
+    <circle cx="54" cy="36" r="9" fill="${C.red}" ${S}/><rect x="66" y="26" width="16" height="22" rx="4" fill="${C.white}" ${S}/>
+    <path d="M72 26v-4" ${S}/><path d="M38 52h58" stroke="${C.green}" stroke-width="4" stroke-linecap="round"/>`, '#E5F1E6'),
+  phone: svg(`
+    <rect x="36" y="16" width="48" height="88" rx="10" fill="${C.navy}" ${S}/>
+    <rect x="42" y="28" width="36" height="58" rx="4" fill="${C.white}"/>
+    <circle cx="60" cy="96" r="3.5" fill="${C.white}"/>
+    <path d="M50 46h20M50 56h14" stroke="${C.sky}" stroke-width="4" stroke-linecap="round"/>
+    <path d="M90 36q8 8 0 16M96 30q14 14 0 28" fill="none" stroke="${C.red}" stroke-width="3" stroke-linecap="round"/>
+    <rect x="48" y="66" width="24" height="12" rx="3" fill="${C.green}"/>`, '#FCE3D6'),
 };
 
 // Coco the rooster, wearing a beret.

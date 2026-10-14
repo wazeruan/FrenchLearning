@@ -1,7 +1,9 @@
 # Coco · French
 
-A private, offline French course for beginners (A1). No account, no tracking, no network:
-everything — lessons, audio, images and your progress — lives on this machine.
+A private, offline French course that takes you from zero toward **NCLC 7** on TEF Canada / TCF Canada
+(Canadian immigration), about 30 minutes a day. No account, no tracking, no network: everything —
+lessons, audio, images and your progress — lives on this machine. See [ROADMAP.md](ROADMAP.md) for the
+stages and the plan.
 
 ## Open the app
 
@@ -14,12 +16,20 @@ Pick one way and stick with it, or use **Settings → Export backup / Import bac
 
 ## What's inside
 
-- **12 units, 104 words**, each with an illustration, pronunciation, an example sentence and a grammar tip.
-- **Six exercise types:** meaning (FR→EN), translation (EN→FR), listening, typing (with an accent keyboard),
-  matching pairs, and sentence building. Mistakes come back once at the end of the lesson.
+- **Stage 1 · A1 (≈ NCLC 1–3), 25 units:** 12 vocabulary units, 10 grammar lessons (être, articles,
+  adjectives, avoir and possessives, -er verbs, negation, questions, aller/faire, numbers to 100,
+  telling time) and 3 Canadian-life dialogues (airport, grocery store, booking a clinic appointment).
+- **Each unit is a guided sequence:** words → grammar lesson or dialogue → practice.
+- **Seven exercise types:** meaning (FR→EN), translation (EN→FR), listening, spelling (letter tiles,
+  keyboard with hints, or off), matching pairs, sentence building, and grammar fill-in-the-blank.
+  Mistakes come back once at the end of the lesson.
+- **Dialogues** voiced by a Canadian (Amélie, fr_CA) and a French (Thomas) voice: listen first with the
+  text blurred, answer comprehension questions, then read along.
+- **"Today's 30 minutes":** review (~5 min), the next lesson (~15 min), and a listening or speaking drill
+  (~10 min), with study time tracked.
 - **Daily review** with spaced repetition (Leitner boxes: 1, 2, 4, 8, 16 days).
-- **Motivation:** daily XP goal, day streaks, a weekly strip and activity heatmap, 10 levels,
-  4 path milestones and 23 achievements.
+- **Motivation:** daily XP goal, day streaks, a weekly strip and activity heatmap, 10 levels, path
+  milestones and 24 achievements.
 - **Speaking practice** 🎤: say a word and Coco checks your pronunciation — on flashcards and as
   "Say it out loud" steps in lessons (practice only, never lowers your stars). See below.
 - Light/dark themes, keyboard shortcuts (1–4 to choose, Enter to check/continue, ← → on flashcards).
@@ -58,11 +68,14 @@ tests/              node:test unit tests for core.js
 
 ```bash
 node --test                              # run unit tests
-node scripts/generate-audio.mjs          # create audio for new items (macOS `say`, voice "Thomas")
+node scripts/generate-audio.mjs          # create/refresh audio (macOS `say`: Thomas + Amélie fr_CA);
+                                         # assets/audio/manifest.json tracks text, so edited lines are redone
 node scripts/generate-audio.mjs --force  # regenerate all audio
 node scripts/generate-art.mjs            # redraw SVG illustrations
 ```
 
-To add content, append items to a unit in `js/data.js` (ids must be unique), then run the audio script.
+To add content, edit `js/data.js` (units, grammar `sections`/`drills`, dialogue `lines`/`questions`; ids
+must be unique and never change, since they key saved progress), add the unit id to a stage's `units`
+list, then run the audio script.
 To use your own recordings, drop `<id>.m4a` / `<id>-ex.m4a` files into `assets/audio/` (same names) —
 if a file is missing the app falls back to the browser's built-in French voice.

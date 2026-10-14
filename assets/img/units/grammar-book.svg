@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120"><rect width="120" height="120" rx="28" fill="#E3EAF6"/>
+    <path d="M60 30c-12-8-28-10-42-8v66c14-2 30 0 42 8z" fill="#FFFFFF" stroke="#2B2B33" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M60 30c12-8 28-10 42-8v66c-14-2-30 0-42 8z" fill="#FFFFFF" stroke="#2B2B33" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M60 30v66" stroke="#2B2B33" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+    <text x="26" y="66" font-family="Georgia, serif" font-size="22" font-weight="700" fill="#1F3A68">Aa</text>
+    <path d="M70 48h22M70 58h22M70 68h16" stroke="#E2554A" stroke-width="4" stroke-linecap="round"/></svg>

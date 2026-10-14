@@ -161,15 +161,484 @@
       ]),
   ];
 
-  // Milestones: checkpoints along the path, reached when the listed number of units is complete.
-  const milestones = [
-    { id: 'm1', after: 3, title: 'Premiers mots', en: 'First words — you can greet and count!' },
-    { id: 'm2', after: 6, title: 'À table !', en: 'You can talk about family and food.' },
-    { id: 'm3', after: 9, title: 'Au quotidien', en: 'Everyday French: cafés, animals and days.' },
-    { id: 'm4', after: 12, title: 'Niveau A1', en: 'Course complete — félicitations !' },
+  // ---------- A1 grammar, numbers & time, dialogues ----------
+  // Grammar units add `grammar`: { sections: [{ h, p?, table?: [[fr, en]], examples?: [[fr, en]] }],
+  //   drills: [[sentence with ___, answer, [options], english]] }.
+  // Dialogue units add `dialogue`: { scene, speakers: { A: [name, voice], B: [name, voice] },
+  //   lines: [[speaker, fr, en]], questions: [[question_fr, question_en, [options], correctIndex]] }.
+  const G = (unit, grammar) => Object.assign(unit, { kind: 'grammar', grammar });
+  const DLG = (unit, dialogue) => Object.assign(unit, { kind: 'dialogue', dialogue });
+  const num = (n) => ({ num: String(n) });
+  const clock = (t) => ({ clock: t });
+  const CA = 'Amélie'; // Canadian French voice (fr_CA)
+
+  const a1 = [
+    G(U('g01', 'Être', 'To be · je suis…', 'grammar-book',
+      'Être (to be) is irregular — learn it by heart: je suis, tu es, il est, nous sommes, vous êtes, ils sont.',
+      [
+        I('g01-01', 'je suis', 'I am', e('🙋'), 'Je suis fatigué.', 'I am tired.'),
+        I('g01-02', 'tu es', 'you are (informal)', e('👉'), 'Tu es prêt ?', 'Are you ready?'),
+        I('g01-03', 'il est', 'he is / it is', e('👨'), 'Il est médecin.', 'He is a doctor.'),
+        I('g01-04', 'elle est', 'she is', e('👩'), 'Elle est infirmière.', 'She is a nurse.'),
+        I('g01-05', 'nous sommes', 'we are', e('👫'), 'Nous sommes à Montréal.', 'We are in Montreal.'),
+        I('g01-06', 'vous êtes', 'you are (formal / plural)', e('🤝'), 'Vous êtes canadien ?', 'Are you Canadian?'),
+        I('g01-07', 'ils sont', 'they are', e('👥'), 'Ils sont en retard.', 'They are late.'),
+        I('g01-08', "c'est", 'it is / this is', e('👆'), "C'est mon ami.", 'This is my friend.'),
+      ]), {
+      sections: [
+        { h: 'Subject pronouns', p: 'French has two words for "you": tu for one friend, family member or child, and vous to be polite or to talk to several people. In conversation, on (literally "one") usually means "we".',
+          table: [['je', 'I'], ['tu', 'you (informal)'], ['il / elle', 'he / she (also "it")'], ['on', 'we (spoken), one'], ['nous', 'we'], ['vous', 'you (formal or plural)'], ['ils / elles', 'they (masc. or mixed / fem.)']] },
+        { h: 'Être — to be', table: [['je suis', 'I am'], ['tu es', 'you are'], ['il / elle / on est', 'he / she is, we are'], ['nous sommes', 'we are'], ['vous êtes', 'you are'], ['ils / elles sont', 'they are']],
+          examples: [['Je suis étudiante.', 'I am a student. (said by a woman)'], ['Nous sommes en retard.', 'We are late.']] },
+        { h: 'Jobs and nationalities', p: 'After être, French drops "a" before a job or nationality: il est ingénieur (he is an engineer). After c\'est, keep the article: c\'est un ingénieur.',
+          examples: [['Elle est avocate.', 'She is a lawyer.'], ["C'est une bonne idée.", "It's a good idea."]] },
+      ],
+      drills: [
+        ['Je ___ ingénieur.', 'suis', ['suis', 'es', 'est'], 'I am an engineer.'],
+        ['Tu ___ fatigué ?', 'es', ['es', 'est', 'êtes'], 'Are you tired?'],
+        ['Elle ___ à Toronto.', 'est', ['est', 'es', 'sont'], 'She is in Toronto.'],
+        ['Nous ___ prêts.', 'sommes', ['sommes', 'êtes', 'sont'], 'We are ready.'],
+        ['Vous ___ madame Tremblay ?', 'êtes', ['êtes', 'es', 'sommes'], 'Are you Mrs. Tremblay?'],
+        ['Ils ___ canadiens.', 'sont', ['sont', 'est', 'ont'], 'They are Canadian.'],
+        ['Marie et Paul ___ en retard.', 'sont', ['sont', 'est', 'sommes'], 'Marie and Paul are late.'],
+        ['On ___ ensemble.', 'est', ['est', 'sommes', 'es'], 'We are together.'],
+        ['___ suis étudiant.', 'Je', ['Je', 'Tu', 'Il'], 'I am a student.'],
+        ['___ êtes très gentil.', 'Vous', ['Vous', 'Nous', 'Ils'], 'You are very kind.'],
+      ],
+    }),
+
+    G(U('g02', 'Le, la, un, une', 'Articles & gender', 'grammar-pencil',
+      'Learn every noun with its article: not just "livre" but "un livre". The article tells you the gender.',
+      [
+        I('g02-01', 'un livre', 'a book', e('📕'), "J'ai un livre.", 'I have a book.', 'masculine'),
+        I('g02-02', 'une voiture', 'a car', e('🚗'), "C'est une voiture rouge.", "It's a red car.", 'feminine'),
+        I('g02-03', 'des enfants', '(some) children', e('🧒'), 'Il y a des enfants dans le parc.', 'There are children in the park.'),
+        I('g02-04', 'le travail', 'work / the job', e('💼'), 'Le travail commence à neuf heures.', 'Work starts at nine.'),
+        I('g02-05', "l'école", 'the school', e('🏫'), "L'école est fermée.", 'The school is closed.', 'feminine'),
+        I('g02-06', 'les gens', 'people', e('🧑‍🤝‍🧑'), 'Les gens sont gentils ici.', 'People are kind here.'),
+        I('g02-07', 'la ville', 'the city / town', e('🏙️'), 'La ville est belle.', 'The city is beautiful.'),
+        I('g02-08', 'le pays', 'the country', e('🗺️'), 'Le Canada est un grand pays.', 'Canada is a big country.'),
+      ]), {
+      sections: [
+        { h: '"The": le, la, l\', les', table: [['le + masculine', 'le livre'], ['la + feminine', 'la ville'], ["l' + vowel or silent h", "l'école, l'hôpital"], ['les + plural', 'les livres']] },
+        { h: '"A / some": un, une, des', table: [['un + masculine', 'un livre'], ['une + feminine', 'une ville'], ['des + plural', 'des livres']] },
+        { h: 'Using them', p: 'French nearly always puts an article before a noun. Use le / la / les for things in general: j\'aime le café (I like coffee). The plural -s is silent, so listen to the article: le livre / les livres.',
+          examples: [["J'aime le fromage.", 'I like cheese.'], ["C'est un ami.", "He's a friend."]] },
+      ],
+      drills: [
+        ['___ livre est sur la table.', 'Le', ['Le', 'La', 'Les'], 'The book is on the table.'],
+        ['___ école est grande.', "L'", ["L'", 'La', 'Le'], 'The school is big.'],
+        ['___ enfants jouent.', 'Les', ['Les', 'Le', 'La'], 'The children are playing.'],
+        ["J'ai ___ voiture.", 'une', ['une', 'un', 'des'], 'I have a car.'],
+        ['Il y a ___ restaurant ici.', 'un', ['un', 'une', 'des'], 'There is a restaurant here.'],
+        ["C'est ___ amie.", 'une', ['une', 'un', 'des'], 'She is a friend.'],
+        ['Je cherche ___ appartement.', 'un', ['un', 'une', 'la'], 'I am looking for an apartment.'],
+        ['Il y a ___ gens dans la rue.', 'des', ['des', 'un', 'le'], 'There are people in the street.'],
+        ["J'aime ___ musique.", 'la', ['la', 'le', 'une'], 'I like music.'],
+        ['___ Canada est grand.', 'Le', ['Le', 'La', 'Un'], 'Canada is big.'],
+      ],
+    }),
+
+    G(U('g03', 'Les adjectifs', 'Describing things', 'grammar-puzzle',
+      'Most adjectives add -e for feminine and -s for plural: grand, grande, grands, grandes.',
+      [
+        I('g03-01', 'grand', 'big / tall', e('🦒'), 'La maison est grande.', 'The house is big.', 'feminine: grande'),
+        I('g03-02', 'petit', 'small / little', e('🐜'), 'Le chat est petit.', 'The cat is small.', 'feminine: petite'),
+        I('g03-03', 'content', 'happy / glad', e('😄'), 'Elle est contente.', 'She is happy.', 'feminine: contente'),
+        I('g03-04', 'fatigué', 'tired', e('😴'), 'Nous sommes fatigués.', 'We are tired.', 'feminine: fatiguée'),
+        I('g03-05', 'canadien', 'Canadian', e('🍁'), 'Elle est canadienne.', 'She is Canadian.', 'feminine: canadienne'),
+        I('g03-06', 'nouveau', 'new', e('✨'), "C'est un nouveau travail.", "It's a new job.", 'feminine: nouvelle · before a vowel: nouvel'),
+        I('g03-07', 'beau', 'beautiful / handsome', e('🌄'), 'Le Québec est beau.', 'Quebec is beautiful.', 'feminine: belle'),
+        I('g03-08', 'facile', 'easy', e('🍰'), 'Le test est facile.', 'The test is easy.'),
+        I('g03-09', 'difficile', 'difficult', e('🧗'), 'Le français est difficile ?', 'Is French difficult?'),
+      ]), {
+      sections: [
+        { h: 'Agreement', p: 'An adjective matches its noun in gender (masculine / feminine) and number (singular / plural).',
+          table: [['masculine singular', 'un parc vert'], ['feminine singular', 'une ville verte'], ['masculine plural', 'des parcs verts'], ['feminine plural', 'des villes vertes']] },
+        { h: 'Listen for the ending', p: 'Adding -e often makes the final consonant heard: petit ("puh-tee") → petite ("puh-teet"). Adjectives that already end in -e don\'t change in the feminine (facile, difficile, rouge), but they still take -s in the plural: des voitures rouges.',
+          examples: [['Il est petit.', 'He is small.'], ['Elle est petite.', 'She is small.']] },
+        { h: 'Where to put it', p: 'Most adjectives go after the noun: une voiture rouge. A few short, common ones go before: grand, petit, beau, nouveau, bon, jeune, vieux — un petit appartement.' },
+      ],
+      drills: [
+        ['Elle est ___.', 'contente', ['contente', 'content', 'contents'], 'She is happy.'],
+        ['Ils sont ___.', 'fatigués', ['fatigués', 'fatigué', 'fatiguée'], 'They are tired.'],
+        ['Marie est ___.', 'canadienne', ['canadienne', 'canadien', 'canadiens'], 'Marie is Canadian.'],
+        ["C'est une ___ maison.", 'petite', ['petite', 'petit', 'petits'], "It's a small house."],
+        ['Les rues sont ___.', 'grandes', ['grandes', 'grand', 'grande'], 'The streets are big.'],
+        ["C'est une voiture ___.", 'rouge', ['rouge', 'rouges', 'rousse'], "It's a red car."],
+        ["C'est un ___ appartement.", 'nouvel', ['nouvel', 'nouveau', 'nouvelle'], "It's a new apartment."],
+        ['La ville est ___.', 'belle', ['belle', 'beau', 'beaux'], 'The city is beautiful.'],
+        ['Paul et Marc sont ___.', 'grands', ['grands', 'grand', 'grandes'], 'Paul and Marc are tall.'],
+        ["C'est une maison ___.", 'verte', ['verte', 'vert', 'verts'], "It's a green house."],
+      ],
+    }),
+
+    G(U('g04', 'Avoir', 'To have · my, your…', 'grammar-book',
+      'Avoir (to have) is also used for age: j\'ai trente ans means "I am thirty".',
+      [
+        I('g04-01', "j'ai", 'I have', e('🙋'), "J'ai deux enfants.", 'I have two children.'),
+        I('g04-02', 'tu as', 'you have', e('👉'), 'Tu as un stylo ?', 'Do you have a pen?'),
+        I('g04-03', 'il a', 'he has', e('👨'), 'Il a une voiture.', 'He has a car.'),
+        I('g04-04', 'nous avons', 'we have', e('👫'), 'Nous avons un rendez-vous.', 'We have an appointment.'),
+        I('g04-05', 'vous avez', 'you have (formal / plural)', e('🤝'), 'Vous avez une réservation ?', 'Do you have a reservation?'),
+        I('g04-06', 'ils ont', 'they have', e('👥'), 'Ils ont un chien.', 'They have a dog.'),
+        I('g04-07', 'quel âge as-tu ?', 'how old are you?', e('🎂'), "Quel âge as-tu ? — J'ai dix ans.", 'How old are you? — I am ten.'),
+        I('g04-08', "j'ai faim", "I'm hungry", e('🍽️'), "J'ai faim, on mange ?", "I'm hungry, shall we eat?"),
+      ]), {
+      sections: [
+        { h: 'Avoir — to have', table: [["j'ai", 'I have'], ['tu as', 'you have'], ['il / elle / on a', 'he / she has, we have'], ['nous avons', 'we have'], ['vous avez', 'you have'], ['ils / elles ont', 'they have']],
+          p: 'Careful: ils sont (they are) has an "s" sound; ils ont (they have) has a "z" sound — ils_ont.' },
+        { h: 'My, your, his, her…', p: 'The possessive agrees with the thing owned, not the owner: sa maison = his OR her house. Before a vowel or silent h, use mon / ton / son even with a feminine word: mon amie, mon histoire.',
+          table: [['mon / ma / mes', 'my'], ['ton / ta / tes', 'your (informal)'], ['son / sa / ses', 'his / her'], ['notre / nos', 'our'], ['votre / vos', 'your (formal or plural)'], ['leur / leurs', 'their']] },
+        { h: '"Have" where English says "be"', p: 'avoir … ans (to be … years old), avoir faim (to be hungry), avoir froid (to be cold), avoir besoin de (to need).',
+          examples: [["J'ai froid.", "I'm cold."], ["J'ai besoin d'aide.", 'I need help.']] },
+      ],
+      drills: [
+        ["J'___ deux frères.", 'ai', ['ai', 'as', 'a'], 'I have two brothers.'],
+        ['Tu ___ un stylo ?', 'as', ['as', 'a', 'ai'], 'Do you have a pen?'],
+        ['Elle ___ dix ans.', 'a', ['a', 'as', 'ont'], 'She is ten years old.'],
+        ['Nous ___ faim.', 'avons', ['avons', 'avez', 'ont'], 'We are hungry.'],
+        ['Vous ___ une réservation ?', 'avez', ['avez', 'avons', 'as'], 'Do you have a reservation?'],
+        ['Ils ___ une maison.', 'ont', ['ont', 'sont', 'a'], 'They have a house.'],
+        ['___ père est médecin.', 'Mon', ['Mon', 'Ma', 'Mes'], 'My father is a doctor.'],
+        ['___ sœur habite à Ottawa.', 'Ma', ['Ma', 'Mon', 'Mes'], 'My sister lives in Ottawa.'],
+        ["___ enfants sont à l'école.", 'Mes', ['Mes', 'Mon', 'Ma'], 'My children are at school.'],
+        ["___ amie s'appelle Julie.", 'Mon', ['Mon', 'Ma', 'Mes'], 'My friend (f.) is called Julie.'],
+      ],
+    }),
+
+    DLG(U('d01', "À l'aéroport", 'Arriving in Canada', 'airport',
+      'At the border, officers may speak French or English — answering "Bonjour !" in French is a nice start.',
+      [
+        I('d01-01', 'voici', 'here is / here are', e('📄'), 'Voici mon passeport.', 'Here is my passport.'),
+        I('d01-02', "d'où venez-vous ?", 'where are you coming from?', e('🌍'), "Bonjour, d'où venez-vous ?", 'Hello, where are you coming from?'),
+        I('d01-03', 'je viens de', 'I come from', e('✈️'), 'Je viens du Mexique.', 'I come from Mexico.'),
+        I('d01-04', 'bienvenue', 'welcome', e('🎉'), 'Bienvenue au Canada !', 'Welcome to Canada!'),
+        I('d01-05', 'le résident permanent', 'permanent resident', e('🍁'), 'Je suis résident permanent.', 'I am a permanent resident.'),
+        I('d01-06', 'chez mon frère', "at my brother's (home)", e('🏘️'), "J'habite chez mon frère.", "I'm living at my brother's."),
+        I('d01-07', 'bonne journée', 'have a good day', e('☀️'), 'Merci, bonne journée !', 'Thanks, have a good day!'),
+        I('d01-08', 'bonne chance', 'good luck', e('🍀'), 'Bonne chance pour le test !', 'Good luck on the test!'),
+      ]), {
+      scene: 'Montréal–Trudeau airport. A border services officer welcomes a new permanent resident.',
+      speakers: { A: ['Agente', CA], B: ['Voyageur', 'Thomas'] },
+      lines: [
+        ['A', "Bonjour. Votre passeport, s'il vous plaît.", 'Hello. Your passport, please.'],
+        ['B', 'Bonjour. Voici mon passeport.', 'Hello. Here is my passport.'],
+        ['A', "Merci. D'où venez-vous ?", 'Thank you. Where are you coming from?'],
+        ['B', 'Je viens de Mexico, au Mexique.', "I'm coming from Mexico City, in Mexico."],
+        ['A', 'Quel est le but de votre voyage ?', 'What is the purpose of your trip?'],
+        ['B', 'Je suis un nouveau résident permanent.', 'I am a new permanent resident.'],
+        ['A', 'Bienvenue au Canada ! Vous avez votre confirmation de résidence permanente ?', 'Welcome to Canada! Do you have your confirmation of permanent residence?'],
+        ['B', 'Oui, la voici.', 'Yes, here it is.'],
+        ['A', 'Où est-ce que vous allez habiter ?', 'Where are you going to live?'],
+        ['B', 'À Montréal, chez mon frère.', "In Montreal, at my brother's."],
+        ['A', 'Parfait. Bonne journée et bonne chance !', 'Perfect. Have a good day and good luck!'],
+        ['B', 'Merci beaucoup. Au revoir !', 'Thank you very much. Goodbye!'],
+      ],
+      questions: [
+        ['Où sont-ils ?', 'Where are they?', ["À l'aéroport", 'À la banque', 'Au café'], 0],
+        ['Le voyageur vient de quel pays ?', 'Which country is the traveller coming from?', ['Du Mexique', 'De France', 'Du Canada'], 0],
+        ['Pourquoi est-il au Canada ?', 'Why is he in Canada?', ["C'est un nouveau résident permanent", 'Il est en vacances', "Il travaille à l'aéroport"], 0],
+        ['Où va-t-il habiter ?', 'Where is he going to live?', ['Chez son frère, à Montréal', "À l'hôtel", 'Chez un ami, à Toronto'], 0],
+      ],
+    }),
+
+    G(U('g05', 'Verbes en -er', 'Present tense', 'grammar-pencil',
+      'Most French verbs end in -er and follow one pattern. Learn parler and you know them all.',
+      [
+        I('g05-01', 'parler', 'to speak', e('🗣️'), 'Je parle anglais et un peu français.', 'I speak English and a little French.'),
+        I('g05-02', 'habiter', 'to live (somewhere)', e('🏠'), 'Nous habitons à Calgary.', 'We live in Calgary.'),
+        I('g05-03', 'travailler', 'to work', e('💼'), 'Elle travaille dans un hôpital.', 'She works in a hospital.'),
+        I('g05-04', 'aimer', 'to like / to love', e('❤️'), "J'aime le hockey.", 'I like hockey.'),
+        I('g05-05', 'chercher', 'to look for', e('🔍'), 'Je cherche un emploi.', "I'm looking for a job."),
+        I('g05-06', 'étudier', 'to study', e('📚'), "J'étudie le français tous les jours.", 'I study French every day.'),
+        I('g05-07', 'écouter', 'to listen (to)', e('🎧'), 'Tu écoutes la radio ?', 'Do you listen to the radio?'),
+        I('g05-08', 'commencer', 'to start', e('🏁'), 'Le cours commence à huit heures.', 'The class starts at eight.', 'nous commençons'),
+      ]), {
+      sections: [
+        { h: 'The pattern', p: 'Take off -er and add -e, -es, -e, -ons, -ez, -ent.',
+          table: [['je parle', 'I speak'], ['tu parles', 'you speak'], ['il / elle / on parle', 'he / she speaks, we speak'], ['nous parlons', 'we speak'], ['vous parlez', 'you speak'], ['ils / elles parlent', 'they speak']] },
+        { h: 'Silent endings', p: 'je parle, tu parles, il parle and ils parlent all sound exactly the same — the -ent of a verb is never pronounced. Only nous parlons and vous parlez sound different.' },
+        { h: 'One form, three meanings', p: 'je travaille = I work, I am working, I do work. Before a vowel or silent h, je becomes j\'.',
+          examples: [["J'habite à Montréal.", 'I live in Montreal.'], ['Nous travaillons demain.', 'We are working tomorrow.']] },
+      ],
+      drills: [
+        ['Je ___ français.', 'parle', ['parle', 'parles', 'parlent'], 'I speak French.'],
+        ['Tu ___ où ?', 'habites', ['habites', 'habite', 'habitez'], 'Where do you live?'],
+        ['Il ___ le samedi.', 'travaille', ['travaille', 'travailles', 'travaillons'], 'He works on Saturdays.'],
+        ['Nous ___ un appartement.', 'cherchons', ['cherchons', 'cherchez', 'cherchent'], 'We are looking for an apartment.'],
+        ['Vous ___ anglais ?', 'parlez', ['parlez', 'parlons', 'parle'], 'Do you speak English?'],
+        ['Elles ___ le café.', 'aiment', ['aiment', 'aime', 'aimez'], 'They like coffee.'],
+        ["J'___ le soir.", 'étudie', ['étudie', 'étudies', 'étudions'], 'I study in the evening.'],
+        ['On ___ ensemble ?', 'mange', ['mange', 'manges', 'mangez'], 'Shall we eat together?'],
+        ['Mes parents ___ en Inde.', 'habitent', ['habitent', 'habite', 'habitons'], 'My parents live in India.'],
+        ['Nous ___ demain.', 'commençons', ['commençons', 'commencez', 'commencent'], 'We start tomorrow.'],
+      ],
+    }),
+
+    G(U('g06', 'La négation', 'Saying no · ne… pas', 'grammar-puzzle',
+      'Wrap the verb: ne + verb + pas. In everyday speech many people drop the ne: « je sais pas ».',
+      [
+        I('g06-01', 'ne … pas', 'not', e('🚫'), 'Je ne parle pas espagnol.', "I don't speak Spanish."),
+        I('g06-02', 'je ne sais pas', "I don't know", e('🤷'), 'Désolé, je ne sais pas.', "Sorry, I don't know."),
+        I('g06-03', 'je ne comprends pas', "I don't understand", e('😕'), 'Pardon, je ne comprends pas.', "Sorry, I don't understand."),
+        I('g06-04', "ce n'est pas grave", "it's no big deal", e('😌'), "Tu es en retard ? Ce n'est pas grave.", "You're late? It's no big deal."),
+        I('g06-05', 'pas de problème', 'no problem', e('👍'), "Pas de problème, j'attends.", "No problem, I'll wait."),
+        I('g06-06', 'ne … jamais', 'never', e('⛔'), 'Il ne mange jamais de viande.', 'He never eats meat.'),
+        I('g06-07', 'ne … plus', 'not anymore', e('🔚'), 'Je ne travaille plus ici.', "I don't work here anymore."),
+        I('g06-08', 'pouvez-vous répéter ?', 'can you repeat?', e('🔁'), "Pouvez-vous répéter, s'il vous plaît ?", 'Can you repeat that, please?'),
+      ]), {
+      sections: [
+        { h: 'ne … pas', p: 'Put ne before the conjugated verb and pas after it. Ne becomes n\' before a vowel.',
+          examples: [['Je ne suis pas fatigué.', 'I am not tired.'], ["Elle n'habite pas ici.", "She doesn't live here."]] },
+        { h: 'pas de', p: 'After a negation, un / une / des become de (d\' before a vowel): j\'ai une voiture → je n\'ai pas de voiture. Le / la / les don\'t change: je n\'aime pas le café. Exception: after être nothing changes — ce n\'est pas une voiture, ce n\'est pas un problème.',
+          examples: [["Il n'a pas d'enfants.", 'He has no children.']] },
+        { h: 'Other negations', table: [['ne … jamais', 'never'], ['ne … plus', 'no longer, not anymore'], ['ne … rien', 'nothing'], ['ne … personne', 'nobody']] },
+      ],
+      drills: [
+        ['Je ___ parle pas russe.', 'ne', ['ne', "n'", 'pas'], "I don't speak Russian."],
+        ['Elle ___ habite pas à Toronto.', "n'", ["n'", 'ne', 'pas'], "She doesn't live in Toronto."],
+        ['Nous ne sommes ___ en retard.', 'pas', ['pas', 'de', 'ne'], 'We are not late.'],
+        ["Je n'ai pas ___ voiture.", 'de', ['de', 'une', 'la'], "I don't have a car."],
+        ["Il n'a pas ___ enfants.", "d'", ["d'", 'des', 'les'], 'He has no children.'],
+        ["Je n'aime pas ___ café.", 'le', ['le', 'de', 'du'], "I don't like coffee."],
+        ['Il ne mange ___ de viande.', 'jamais', ['jamais', 'rien', 'personne'], 'He never eats meat.'],
+        ["Je ne travaille ___ ici, j'ai un nouvel emploi.", 'plus', ['plus', 'jamais', 'rien'], "I don't work here anymore, I have a new job."],
+        ['Désolé, je ne ___ pas.', 'comprends', ['comprends', 'comprend', 'comprendre'], "Sorry, I don't understand."],
+        ["Ce n'est pas ___ !", 'grave', ['grave', 'de problème', 'facilement'], "It's no big deal!"],
+      ],
+    }),
+
+    DLG(U('d02', "À l'épicerie", 'At the grocery store', 'grocery',
+      'In Canadian French, cents are often called « sous » and cash is « l\'argent comptant ».',
+      [
+        I('d02-01', 'le sac', 'the bag', e('🛍️'), 'Un sac, s\'il vous plaît.', 'A bag, please.'),
+        I('d02-02', 'ça fait', 'that comes to', e('🧮'), 'Ça fait vingt dollars.', 'That comes to twenty dollars.'),
+        I('d02-03', 'payer par carte', 'to pay by card', e('💳'), 'Je peux payer par carte ?', 'Can I pay by card?'),
+        I('d02-04', "l'argent comptant", 'cash', e('💵'), "Je n'ai pas d'argent comptant.", "I don't have any cash."),
+        I('d02-05', 'le reçu', 'the receipt', e('📃'), 'Vous voulez votre reçu ?', 'Do you want your receipt?'),
+        I('d02-06', 'bien sûr', 'of course', e('😊'), 'Bien sûr, madame.', 'Of course, madam.'),
+        I('d02-07', "d'accord", 'OK / agreed', e('🤙'), "D'accord, à demain.", 'OK, see you tomorrow.'),
+        I('d02-08', 'bonne soirée', 'have a good evening', e('🌙'), 'Merci, bonne soirée !', 'Thanks, have a good evening!'),
+      ]), {
+      scene: 'A grocery store checkout in Gatineau. A customer pays for their groceries.',
+      speakers: { A: ['Caissière', CA], B: ['Client', 'Thomas'] },
+      lines: [
+        ['A', 'Bonjour ! Vous avez trouvé tout ce que vous cherchiez ?', 'Hi! Did you find everything you were looking for?'],
+        ['B', 'Oui, merci. Est-ce que vous avez des sacs ?', 'Yes, thanks. Do you have bags?'],
+        ['A', 'Oui, un sac coûte dix sous.', 'Yes, a bag costs ten cents.'],
+        ['B', "D'accord, deux sacs, s'il vous plaît.", 'OK, two bags, please.'],
+        ['A', 'Ça fait quarante-deux dollars cinquante.', 'That comes to forty-two fifty.'],
+        ['B', 'Je peux payer par carte ?', 'Can I pay by card?'],
+        ['A', 'Bien sûr. Débit ou crédit ?', 'Of course. Debit or credit?'],
+        ['B', 'Débit.', 'Debit.'],
+        ['A', 'Vous voulez votre reçu ?', 'Do you want your receipt?'],
+        ['B', 'Non, merci. Bonne soirée !', 'No, thanks. Have a good evening!'],
+        ['A', 'Merci, vous aussi !', 'Thanks, you too!'],
+      ],
+      questions: [
+        ['Combien coûte un sac ?', 'How much does a bag cost?', ['Dix sous', 'Un dollar', 'Rien'], 0],
+        ['Combien de sacs prend le client ?', 'How many bags does the customer take?', ['Deux', 'Un', 'Trois'], 0],
+        ['Quel est le total ?', 'What is the total?', ['42,50 $', '24,50 $', '52,40 $'], 0],
+        ['Comment paie-t-il ?', 'How does he pay?', ['Par carte de débit', 'En argent comptant', 'Par carte de crédit'], 0],
+        ['Il veut son reçu ?', 'Does he want his receipt?', ['Non', 'Oui', 'Il ne sait pas'], 0],
+      ],
+    }),
+
+    G(U('g07', 'Poser des questions', 'Asking questions', 'grammar-book',
+      'Three ways to ask: raise your voice (Tu parles français ?), use est-ce que, or invert (Parlez-vous français ?).',
+      [
+        I('g07-01', 'où', 'where', e('📍'), 'Où est la gare ?', 'Where is the train station?'),
+        I('g07-02', 'quand', 'when', e('📅'), "C'est quand, le rendez-vous ?", 'When is the appointment?'),
+        I('g07-03', 'comment', 'how', e('❓'), 'Comment vous appelez-vous ?', 'What is your name?'),
+        I('g07-04', 'combien', 'how much / how many', e('💲'), 'Combien coûte le billet ?', 'How much is the ticket?'),
+        I('g07-05', 'pourquoi', 'why', e('🤔'), 'Pourquoi apprenez-vous le français ?', 'Why are you learning French?'),
+        I('g07-06', 'qui', 'who', e('🧑'), 'Qui est votre médecin ?', 'Who is your doctor?'),
+        I('g07-07', "qu'est-ce que", 'what', e('💭'), "Qu'est-ce que vous faites dans la vie ?", 'What do you do for a living?'),
+        I('g07-08', 'est-ce que', '(makes a yes/no question)', e('❔'), 'Est-ce que vous avez un permis de conduire ?', "Do you have a driver's licence?"),
+        I('g07-09', 'quel', 'which / what', e('🔢'), 'Quel est votre numéro de téléphone ?', 'What is your phone number?', 'quel, quelle, quels, quelles'),
+      ]), {
+      sections: [
+        { h: 'Yes / no questions', table: [['Vous parlez français ?', 'rising voice — everyday'], ['Est-ce que vous parlez français ?', 'est-ce que — neutral, always safe'], ['Parlez-vous français ?', 'inversion — formal, written']] },
+        { h: 'Question words', p: 'Question word + est-ce que + sentence: Où est-ce que vous habitez ? In conversation you also hear the word at the end: Vous habitez où ?',
+          table: [['où', 'where'], ['quand', 'when'], ['comment', 'how'], ['combien', 'how much / many'], ['pourquoi', 'why'], ['qui', 'who'], ["qu'est-ce que", 'what']] },
+        { h: 'Quel', p: 'Quel (which / what) agrees with its noun: quel jour, quelle heure, quels documents, quelles questions. You\'ll see it on every form.',
+          examples: [['Quel est votre nom ?', 'What is your name?'], ['Quelle est votre adresse ?', 'What is your address?']] },
+      ],
+      drills: [
+        ['___ est la banque ? — À côté de la poste.', 'Où', ['Où', 'Quand', 'Qui'], 'Where is the bank? — Next to the post office.'],
+        ['___ coûte le billet ? — Dix dollars.', 'Combien', ['Combien', 'Comment', 'Où'], 'How much is the ticket? — Ten dollars.'],
+        ['___ est votre médecin ? — Le docteur Roy.', 'Qui', ['Qui', 'Où', 'Quand'], 'Who is your doctor? — Dr. Roy.'],
+        ['___ commence le cours ? — Demain.', 'Quand', ['Quand', 'Où', 'Combien'], 'When does the class start? — Tomorrow.'],
+        ['___ vous appelez-vous ? — Sophie.', 'Comment', ['Comment', 'Qui', 'Quel'], 'What is your name? — Sophie.'],
+        ['___ est-ce que tu apprends le français ? — Pour le travail.', 'Pourquoi', ['Pourquoi', 'Comment', 'Quand'], 'Why are you learning French? — For work.'],
+        ['___ est votre adresse ?', 'Quelle', ['Quelle', 'Quel', 'Quels'], 'What is your address?'],
+        ['___ est votre numéro de téléphone ?', 'Quel', ['Quel', 'Quelle', 'Quelles'], 'What is your phone number?'],
+        ['___ vous avez des enfants ?', 'Est-ce que', ['Est-ce que', "Qu'est-ce que", 'Où'], 'Do you have children?'],
+        ['___ vous faites la fin de semaine ?', "Qu'est-ce que", ["Qu'est-ce que", 'Est-ce que', 'Qui'], 'What do you do on weekends?'],
+      ],
+    }),
+
+    G(U('n01', 'Les nombres 11–100', 'Numbers to 100', 'numbers2',
+      'From 70, French counts in a funny way: 70 = soixante-dix (60 + 10), 80 = quatre-vingts (4 × 20), 90 = quatre-vingt-dix.',
+      [
+        I('n01-01', 'onze', 'eleven', num(11), 'Mon fils a onze ans.', 'My son is eleven.'),
+        I('n01-02', 'douze', 'twelve', num(12), "Douze œufs, s'il vous plaît.", 'Twelve eggs, please.'),
+        I('n01-03', 'quinze', 'fifteen', num(15), 'Le magasin ferme dans quinze minutes.', 'The store closes in fifteen minutes.'),
+        I('n01-04', 'vingt', 'twenty', num(20), 'Le billet coûte vingt dollars.', 'The ticket costs twenty dollars.'),
+        I('n01-05', 'vingt et un', 'twenty-one', num(21), 'Elle a vingt et un ans.', 'She is twenty-one.'),
+        I('n01-06', 'trente', 'thirty', num(30), 'Il fait trente degrés.', "It's thirty degrees."),
+        I('n01-07', 'cinquante', 'fifty', num(50), 'Mon père a cinquante ans.', 'My father is fifty.'),
+        I('n01-08', 'soixante-dix', 'seventy', num(70), 'La chambre coûte soixante-dix dollars.', 'The room costs seventy dollars.'),
+        I('n01-09', 'quatre-vingts', 'eighty', num(80), 'Ma grand-mère a quatre-vingts ans.', 'My grandmother is eighty.'),
+        I('n01-10', 'quatre-vingt-dix', 'ninety', num(90), 'Le livre a quatre-vingt-dix pages.', 'The book has ninety pages.'),
+        I('n01-11', 'cent', 'one hundred', num(100), "Cent dollars, c'est cher !", "A hundred dollars, that's expensive!"),
+      ]), {
+      sections: [
+        { h: '11 to 19', table: [['11 onze', '12 douze'], ['13 treize', '14 quatorze'], ['15 quinze', '16 seize'], ['17 dix-sept', '18 dix-huit'], ['19 dix-neuf', '']] },
+        { h: 'Tens', table: [['20 vingt', '30 trente'], ['40 quarante', '50 cinquante'], ['60 soixante', '70 soixante-dix'], ['80 quatre-vingts', '90 quatre-vingt-dix'], ['100 cent', '']],
+          p: 'Add units with a hyphen: vingt-deux, trente-cinq. For 21, 31, 41, 51, 61 and 71 say "et un / et onze": vingt et un, soixante et onze. But 81 = quatre-vingt-un — and quatre-vingts loses its -s when another number follows.' },
+        { h: '70, 80, 90', p: '70–79 = 60 + 10…19: soixante-dix, soixante-douze, soixante-dix-neuf. 80 = 4 × 20: quatre-vingts. 90–99 = 80 + 10…19: quatre-vingt-dix, quatre-vingt-quinze. Prices come up in every listening test, so practise them aloud.',
+          examples: [['Ça coûte soixante-quinze dollars.', 'That costs seventy-five dollars.'], ['Mon numéro finit par quatre-vingt-dix-huit.', 'My number ends in ninety-eight.']] },
+      ],
+      drills: [
+        ['17 = ___', 'dix-sept', ['dix-sept', 'sept-dix', 'seize'], 'seventeen'],
+        ['21 = ___', 'vingt et un', ['vingt et un', 'vingt-deux', 'douze'], 'twenty-one'],
+        ['45 = ___', 'quarante-cinq', ['quarante-cinq', 'cinquante-quatre', 'quatorze'], 'forty-five'],
+        ['70 = ___', 'soixante-dix', ['soixante-dix', 'soixante', 'quatre-vingts'], 'seventy'],
+        ['80 = ___', 'quatre-vingts', ['quatre-vingts', 'quatre-vingt-dix', 'soixante-dix'], 'eighty'],
+        ['91 = ___', 'quatre-vingt-onze', ['quatre-vingt-onze', 'quatre-vingt-un', 'soixante et onze'], 'ninety-one'],
+        ['76 = ___', 'soixante-seize', ['soixante-seize', 'soixante-six', 'quatre-vingt-six'], 'seventy-six'],
+        ['33 = ___', 'trente-trois', ['trente-trois', 'treize', 'trois-trente'], 'thirty-three'],
+        ['Le billet coûte ___ dollars. (95)', 'quatre-vingt-quinze', ['quatre-vingt-quinze', 'soixante-quinze', 'quatre-vingt-cinq'], 'The ticket costs 95 dollars.'],
+        ['100 = ___', 'cent', ['cent', 'mille', 'dix'], 'one hundred'],
+      ],
+    }),
+
+    G(U('n02', "L'heure", 'Telling the time', 'clock',
+      'In Canada, official times (transport, TV, appointments) use the 24-hour clock: 18 h 30 = dix-huit heures trente.',
+      [
+        I('n02-01', 'quelle heure est-il ?', 'what time is it?', e('⏰'), 'Pardon, quelle heure est-il ?', 'Excuse me, what time is it?'),
+        I('n02-02', 'une heure', "one o'clock", clock('1:00'), 'Il est une heure.', "It's one o'clock."),
+        I('n02-03', 'huit heures', "eight o'clock", clock('8:00'), 'Je commence à huit heures.', 'I start at eight.'),
+        I('n02-04', 'huit heures et quart', 'quarter past eight', clock('8:15'), 'Le bus passe à huit heures et quart.', 'The bus comes at a quarter past eight.'),
+        I('n02-05', 'huit heures et demie', 'half past eight', clock('8:30'), 'Le rendez-vous est à huit heures et demie.', 'The appointment is at half past eight.'),
+        I('n02-06', 'neuf heures moins le quart', 'quarter to nine', clock('8:45'), 'Il est neuf heures moins le quart.', "It's a quarter to nine."),
+        I('n02-07', 'midi', 'noon', clock('12:00'), 'On mange à midi.', 'We eat at noon.'),
+        I('n02-08', 'minuit', 'midnight', clock('0:00'), 'Le magasin ferme à minuit.', 'The store closes at midnight.'),
+        I('n02-09', 'dix-huit heures trente', '6:30 p.m.', clock('18:30'), 'Le film commence à dix-huit heures trente.', 'The movie starts at 6:30 p.m.'),
+      ]), {
+      sections: [
+        { h: 'Asking and telling', p: 'Quelle heure est-il ? — Il est… Use à for "at": à neuf heures. French writes times with h: 9 h, 9 h 30 (not 9:30).',
+          examples: [['Il est trois heures.', "It's three o'clock."], ['Le cours est à dix heures.', 'The class is at ten.']] },
+        { h: 'Quarters and halves', table: [['et quart', 'quarter past (:15)'], ['et demie', 'half past (:30)'], ['moins le quart', 'quarter to (:45)'], ['moins dix', 'ten to (:50)'], ['midi / minuit', 'noon / midnight']] },
+        { h: 'The 24-hour clock', p: 'Schedules use 0–23 h with plain minutes: 14 h 15 = quatorze heures quinze, 20 h 45 = vingt heures quarante-cinq. In conversation people also say deux heures de l\'après-midi, huit heures du soir.' },
+      ],
+      drills: [
+        ['Il est ___. (7 h 30)', 'sept heures et demie', ['sept heures et demie', 'sept heures et quart', 'sept heures moins le quart'], "It's half past seven."],
+        ['Il est ___. (10 h 15)', 'dix heures et quart', ['dix heures et quart', 'dix heures moins le quart', 'dix heures et demie'], "It's a quarter past ten."],
+        ['Il est ___. (4 h 45)', 'cinq heures moins le quart', ['cinq heures moins le quart', 'quatre heures moins le quart', 'quatre heures et quart'], "It's a quarter to five."],
+        ['On mange à ___. (12 h)', 'midi', ['midi', 'minuit', 'douze'], 'We eat at noon.'],
+        ['Le train part à ___. (17 h)', 'dix-sept heures', ['dix-sept heures', 'sept heures', 'dix-six heures'], 'The train leaves at 5 p.m.'],
+        ['Le film commence à ___. (20 h 30)', 'vingt heures trente', ['vingt heures trente', 'vingt heures et quart', 'deux heures trente'], 'The movie starts at 8:30 p.m.'],
+        ['___ heure est-il ?', 'Quelle', ['Quelle', 'Quel', 'Combien'], 'What time is it?'],
+        ['Le rendez-vous est ___ neuf heures.', 'à', ['à', 'de', 'en'], 'The appointment is at nine.'],
+      ],
+    }),
+
+    DLG(U('d03', 'Prendre rendez-vous', 'Booking an appointment by phone', 'phone',
+      'Phone calls to get information are a classic speaking-test task (TEF Section A). Notice how each question is asked politely.',
+      [
+        I('d03-01', 'prendre rendez-vous', 'to make an appointment', e('📞'), 'Je voudrais prendre rendez-vous.', 'I would like to make an appointment.'),
+        I('d03-02', 'la clinique', 'the clinic', e('🏥'), 'La clinique ouvre à huit heures.', 'The clinic opens at eight.'),
+        I('d03-03', "la carte d'assurance maladie", 'health insurance card', e('🪪'), "Voici ma carte d'assurance maladie.", 'Here is my health insurance card.'),
+        I('d03-04', 'ça vous va ?', 'does that suit you?', e('🗓️'), 'Mardi à dix heures, ça vous va ?', 'Tuesday at ten, does that suit you?'),
+        I('d03-05', "c'est possible", "it's possible", e('🟢'), "Jeudi soir, c'est possible.", "Thursday evening is possible."),
+        I('d03-06', 'le soir', 'in the evening', e('🌇'), 'Je travaille le soir.', 'I work in the evening.'),
+        I('d03-07', 'le médecin', 'the doctor', e('🩺'), 'Je voudrais voir un médecin.', 'I would like to see a doctor.'),
+        I('d03-08', 'à jeudi', 'see you Thursday', e('📆'), 'Merci, à jeudi !', 'Thanks, see you Thursday!'),
+      ]), {
+      scene: 'Lucas calls a medical clinic in Montreal to book an appointment with a doctor.',
+      speakers: { A: ['Réceptionniste', CA], B: ['Lucas', 'Thomas'] },
+      lines: [
+        ['A', 'Clinique Saint-Laurent, bonjour !', 'Saint-Laurent Clinic, hello!'],
+        ['B', 'Bonjour, je voudrais prendre rendez-vous avec un médecin.', "Hello, I'd like to make an appointment with a doctor."],
+        ['A', "Oui. Vous avez votre carte d'assurance maladie ?", 'Yes. Do you have your health insurance card?'],
+        ['B', "Oui, je l'ai.", 'Yes, I have it.'],
+        ['A', 'Très bien. Mardi à dix heures et quart, ça vous va ?', 'Very good. Tuesday at a quarter past ten, does that suit you?'],
+        ['B', 'Mardi, je travaille. Est-ce que vous avez un rendez-vous le soir ?', 'On Tuesday I work. Do you have an appointment in the evening?'],
+        ['A', "Jeudi à dix-huit heures trente, c'est possible.", 'Thursday at 6:30 p.m. is possible.'],
+        ['B', 'Parfait, jeudi à dix-huit heures trente.', 'Perfect, Thursday at 6:30 p.m.'],
+        ['A', "Quel est votre nom, s'il vous plaît ?", 'What is your name, please?'],
+        ['B', "Je m'appelle Lucas Martin.", 'My name is Lucas Martin.'],
+        ['A', 'Merci, monsieur Martin. À jeudi !', 'Thank you, Mr. Martin. See you Thursday!'],
+        ['B', 'Merci, au revoir !', 'Thank you, goodbye!'],
+      ],
+      questions: [
+        ['Pourquoi Lucas téléphone-t-il ?', 'Why is Lucas calling?', ['Pour prendre rendez-vous avec un médecin', 'Pour réserver une table', 'Pour chercher un emploi'], 0],
+        ['Pourquoi pas mardi ?', 'Why not Tuesday?', ['Il travaille', 'Il est malade', 'La clinique est fermée'], 0],
+        ['Le rendez-vous est quand ?', 'When is the appointment?', ['Jeudi à 18 h 30', 'Mardi à 10 h 15', 'Jeudi à 8 h 30'], 0],
+        ['Quel document faut-il ?', 'Which document is needed?', ["La carte d'assurance maladie", 'Le passeport', 'Le permis de conduire'], 0],
+      ],
+    }),
+
+    G(U('g08', 'Aller et faire', 'To go · to do', 'grammar-pencil',
+      'aller + infinitive = the near future: je vais travailler demain (I am going to work tomorrow).',
+      [
+        I('g08-01', 'je vais', 'I go / I am going', e('🚶'), 'Je vais au travail en bus.', 'I go to work by bus.'),
+        I('g08-02', 'tu vas', 'you go', e('👉'), 'Tu vas bien ?', 'Are you doing well?'),
+        I('g08-03', 'nous allons', 'we go', e('👫'), 'Nous allons au parc.', "We're going to the park."),
+        I('g08-04', 'ils vont', 'they go', e('👥'), "Ils vont à l'école à pied.", 'They walk to school.'),
+        I('g08-05', 'on va', "we go / let's go (spoken)", e('🚌'), 'On va au cinéma ce soir ?', 'Shall we go to the movies tonight?'),
+        I('g08-06', 'je fais', 'I do / I make', e('🛠️'), 'Je fais les courses le samedi.', 'I do the shopping on Saturdays.'),
+        I('g08-07', 'vous faites', 'you do (formal / plural)', e('🤝'), "Qu'est-ce que vous faites ce soir ?", 'What are you doing tonight?'),
+        I('g08-08', 'faire du sport', 'to do sports / exercise', e('⛹️'), 'Je fais du sport deux fois par semaine.', 'I exercise twice a week.'),
+      ]), {
+      sections: [
+        { h: 'Aller — to go', table: [['je vais', 'I go'], ['tu vas', 'you go'], ['il / elle / on va', 'he / she goes, we go'], ['nous allons', 'we go'], ['vous allez', 'you go'], ['ils / elles vont', 'they go']],
+          p: 'à + le = au, à + les = aux: je vais au bureau, aux États-Unis. À la and à l\' don\'t change: à la banque, à l\'hôpital.' },
+        { h: 'Faire — to do, to make', table: [['je fais', 'I do'], ['tu fais', 'you do'], ['il / elle / on fait', 'he / she does, we do'], ['nous faisons', 'we do'], ['vous faites', 'you do'], ['ils / elles font', 'they do']],
+          p: 'Used for many activities: faire du sport, faire la cuisine, faire les courses — and for weather: il fait froid.' },
+        { h: 'The near future', p: 'aller + infinitive talks about plans. It is the easiest future tense — and very common in speaking tests.',
+          examples: [['Je vais appeler demain.', "I'm going to call tomorrow."], ['Nous allons déménager en juin.', 'We are going to move in June.']] },
+      ],
+      drills: [
+        ['Je ___ au travail en métro.', 'vais', ['vais', 'vas', 'va'], 'I go to work by subway.'],
+        ['Vous ___ bien ?', 'allez', ['allez', 'allons', 'vont'], 'Are you well?'],
+        ['Ils ___ à Vancouver.', 'vont', ['vont', 'va', 'allez'], 'They are going to Vancouver.'],
+        ['Nous ___ du ski en hiver.', 'faisons', ['faisons', 'faites', 'font'], 'We go skiing in winter.'],
+        ["Qu'est-ce que tu ___ cette fin de semaine ?", 'fais', ['fais', 'fait', 'faites'], 'What are you doing this weekend?'],
+        ['Elle ___ la cuisine.', 'fait', ['fait', 'fais', 'font'], 'She is cooking.'],
+        ['Je vais ___ banque.', 'à la', ['à la', 'au', 'aux'], "I'm going to the bank."],
+        ['Il va ___ cinéma.', 'au', ['au', 'à la', 'aux'], "He's going to the movies."],
+        ['On va ___ hôpital.', "à l'", ["à l'", 'au', 'à la'], "We're going to the hospital."],
+        ['Demain, je vais ___ ma mère.', 'appeler', ['appeler', 'appelle', 'appelé'], "Tomorrow I'm going to call my mother."],
+      ],
+    }),
   ];
 
-  const data = { units, milestones, voice: 'Thomas' };
+  // ---------- path order (stage 1 · A1) ----------
+  // Unit ids never change (they key saved progress); only their order on the path does.
+  const all = Object.fromEntries(units.concat(a1).map((u) => [u.id, u]));
+  const stages = [
+    {
+      id: 'a1', title: 'Débutant', level: 'A1', nclc: 'NCLC 1–3', en: 'Foundations: greet, introduce yourself, numbers, time, everyday needs',
+      units: ['u01', 'u02', 'g01', 'u03', 'g02', 'u04', 'g03', 'u05', 'g04', 'd01', 'u06', 'g05', 'n01', 'u08', 'g06',
+        'd02', 'u07', 'g07', 'u09', 'n02', 'd03', 'u10', 'g08', 'u11', 'u12'],
+    },
+  ];
+  for (const st of stages) for (const id of st.units) all[id].stage = st.id;
+  const ordered = stages.flatMap((st) => st.units.map((id) => all[id]));
+
+  // Milestones: checkpoints along the path, reached when the listed number of units is complete.
+  const milestones = [
+    { id: 'a1-m1', after: 7, title: 'Premiers pas', en: 'You can greet, introduce yourself and describe things.' },
+    { id: 'a1-m2', after: 15, title: 'Je me débrouille', en: 'You can say what you do, ask for things and shop.' },
+    { id: 'a1-m3', after: 21, title: 'Au quotidien', en: 'Numbers, time and appointments — the basics of daily life.' },
+    { id: 'a1-m4', after: 25, title: 'Niveau A1 ✓', en: 'Stage 1 complete (≈ NCLC 2–3). On to A2!' },
+  ];
+
+  const data = { units: ordered, stages, milestones, voice: 'Thomas', voiceCA: CA };
   if (typeof module !== 'undefined' && module.exports) module.exports = data;
   else root.FR_DATA = data;
 })(this);
