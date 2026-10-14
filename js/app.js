@@ -374,9 +374,10 @@
   // ---------- practice sessions ----------
   let keyHandler = null;
   document.addEventListener('keydown', (e) => {
-    if (e.target.matches('input[type=text], textarea') && e.key !== 'Enter') return;
+    const t = e.target instanceof Element ? e.target : document.body;
+    if (t.matches('input[type=text], textarea') && e.key !== 'Enter') return;
     // Let focused links/buttons handle their own Enter/Space (except the main action buttons).
-    if ((e.key === 'Enter' || e.key === ' ') && e.target.matches('a, button, select, label') && !e.target.matches('#check, #continue, #next')) return;
+    if ((e.key === 'Enter' || e.key === ' ') && t.matches('a, button, select, label') && !t.matches('#check, #continue, #next')) return;
     if (keyHandler) keyHandler(e);
   });
 
@@ -522,33 +523,144 @@
   }
 
   function exType(ex) {
+    const mode = state.settings.typing;
+    if (mode === 'off') {
+      const mc = C.asChoice(D, ex);
+      session.current = mc;
+      return exMC(mc);
+    }
+    return mode === 'keyboard' ? exKeyboard(ex) : exTiles(ex);
+  }
+  function typeResult(ex, it, res) {
+    const hint = res === 'accent' ? 'Watch the accents!' : res === 'article' ? 'Remember the article — it shows the gender.' : '';
+    answered(ex, res !== 'wrong', { hint });
+  }
+  // Renders letter slots grouped per word (so a word never breaks across lines).
+  // cell(i) returns [className, text] for the i-th fillable letter.
+  function slotsHtml(word, cell) {
+    let n = 0;
+    return word.split(' ').map((w) => `<span class="wgroup">${C.letterSlots(w).map((sl) => {
+      if (sl.given) return `<span class="given">${esc(sl.ch)}</span>`;
+      const [cls, text] = cell(n++);
+      return `<span class="${cls}">${esc(text)}</span>`;
+    }).join('')}</span>`).join('');
+  }
+  // A guide like "n _ _" showing the word's length; revealed letters are filled in.
+  function guideHtml(word, revealed) {
+    const letters = C.letterSlots(word).filter((sl) => !sl.given).map((sl) => sl.ch);
+    return `<div class="guide" lang="fr" aria-hidden="true">${slotsHtml(word, (i) => (i < revealed ? ['shown', letters[i]] : ['', '']))}</div>`;
+  }
+  const typeSwitch = (label, mode) => `<button type="button" class="link-btn" data-typing="${mode}">${label}</button>`;
+  function bindTypeSwitch(ex) {
+    $$('[data-typing]').forEach((b) => (b.onclick = () => {
+      state.settings.typing = b.dataset.typing; save();
+      toast('✓', b.dataset.typing === 'keyboard' ? 'Switched to keyboard typing' : 'Switched to letter tiles', 'Change any time in Settings');
+      exType(ex);
+    }));
+  }
+
+  // Easiest: tap shuffled letters to spell the word. Spaces and punctuation are given.
+  function exTiles(ex) {
     const it = C.findItem(D, ex.item);
+    const slots = C.letterSlots(it.fr);
+    const letters = C.spellingTiles(it.fr);
+    const need = letters.length;
+    $('#ex').innerHTML = `
+      <p class="instr">Spell it in French</p>
+      <div class="prompt-pic">${imgHtml(it, 'lg')}<b>${esc(it.en)}</b>${speakerBtn(it.id, 'Hear the word')}</div>
+      <div class="spell" id="spell" lang="fr" aria-label="Your spelling"></div>
+      <div class="letters" id="letters" lang="fr">
+        ${letters.map((ch, k) => `<button type="button" class="letter" data-k="${k}">${esc(ch)}</button>`).join('')}
+        <button type="button" class="letter back-key" id="undo" aria-label="Remove last letter">⌫</button>
+      </div>
+      <p class="center small">${typeSwitch('Prefer the keyboard? Type instead', 'keyboard')}</p>`;
+    const picked = []; // tile indexes in order
+    const draw = () => {
+      $('#spell').innerHTML = slotsHtml(it.fr, (i) => {
+        const k = picked[i];
+        return [`${k !== undefined ? 'filled' : ''} ${i === picked.length ? 'cur' : ''}`, k !== undefined ? letters[k] : ''];
+      });
+      $$('#letters .letter[data-k]').forEach((b) => b.classList.toggle('used', picked.includes(Number(b.dataset.k))));
+      $('#check').disabled = picked.length < need;
+    };
+    const add = (k) => { if (picked.length < need && !picked.includes(k)) { picked.push(k); Sound.sfx('tap'); draw(); } };
+    const undo = () => { if (picked.length) { picked.pop(); draw(); } };
+    $$('#letters .letter[data-k]').forEach((b) => (b.onclick = () => add(Number(b.dataset.k))));
+    $$('#letters .letter').forEach((b) => (b.onmousedown = (e) => e.preventDefault())); // keep focus off tiles so Enter checks
+    $('#undo').onclick = undo;
+    bindTypeSwitch(ex);
+    let done = false;
+    const check = () => {
+      if (done || picked.length < need) return;
+      done = true;
+      let n = 0;
+      const answer = slots.map((sl) => (sl.given ? sl.ch : letters[picked[n++]])).join('');
+      $$('#letters button, [data-typing]').forEach((b) => (b.disabled = true));
+      const res = C.checkAnswer(answer, it.fr);
+      $('#spell').classList.add(res === 'wrong' ? 'wrong' : 'right');
+      typeResult(ex, it, res);
+    };
+    $('#check').onclick = check;
+    // Physical keyboard works too: a letter picks a matching tile, Backspace removes.
+    keyHandler = (e) => {
+      if (done) return;
+      if (e.key === 'Enter') { e.preventDefault(); check(); return; }
+      if (e.key === 'Backspace') { e.preventDefault(); undo(); return; }
+      if (e.key.length !== 1 || e.ctrlKey || e.metaKey || e.altKey) return;
+      const key = e.key.toLowerCase();
+      const base = (c) => c.replace('œ', 'o').replace('æ', 'a').normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+      const free = letters.map((ch, k) => k).filter((k) => !picked.includes(k));
+      const k = free.find((k) => letters[k] === key) ?? free.find((k) => base(letters[k]) === key);
+      if (k !== undefined) add(k);
+    };
+    draw();
+    if (state.settings.autoplay) later(() => Sound.play(it.id, it.fr), 250);
+  }
+
+  // Keyboard typing with a length guide and a hint button that reveals one letter at a time.
+  function exKeyboard(ex) {
+    const it = C.findItem(D, ex.item);
+    let revealed = 1;
     $('#ex').innerHTML = `
       <p class="instr">Write this in French</p>
       <div class="prompt-pic">${imgHtml(it, 'lg')}<b>${esc(it.en)}</b></div>
+      <div id="guide">${guideHtml(it.fr, revealed)}</div>
       <input type="text" id="answer" lang="fr" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Type in French…" aria-label="Your answer in French">
-      <div class="accents">${ACCENTS.map((a) => `<button type="button" data-ch="${a}">${a}</button>`).join('')}</div>`;
+      <div class="accents">${ACCENTS.map((a) => `<button type="button" data-ch="${a}">${a}</button>`).join('')}
+        <button type="button" class="hint-btn" id="hint">💡 Hint</button></div>
+      <p class="center small">${typeSwitch('Too hard? Use letter tiles', 'tiles')}</p>`;
     const input = $('#answer');
     input.focus();
     input.oninput = () => { $('#check').disabled = !input.value.trim(); };
     $$('.accents button').forEach((b) => (b.onmousedown = (e) => e.preventDefault()));
-    $$('.accents button').forEach((b) => (b.onclick = () => {
-      const s = input.selectionStart, en = input.selectionEnd;
-      input.setRangeText(b.dataset.ch, s, en, 'end');
+    $$('.accents button[data-ch]').forEach((b) => (b.onclick = () => {
+      input.setRangeText(b.dataset.ch, input.selectionStart, input.selectionEnd, 'end');
       input.dispatchEvent(new Event('input'));
       input.focus();
     }));
+    // Hints stop one letter short, so the learner always finishes the word.
+    const total = C.letterSlots(it.fr).filter((sl) => !sl.given).length;
+    const maxReveal = Math.max(1, total - 1);
+    if (revealed >= maxReveal) $('#hint').disabled = true;
+    $('#hint').onclick = () => {
+      revealed = Math.min(maxReveal, revealed + 1);
+      $('#guide').innerHTML = guideHtml(it.fr, revealed);
+      input.value = C.revealPrefix(it.fr, revealed);
+      input.dispatchEvent(new Event('input'));
+      input.focus();
+      if (revealed >= maxReveal) $('#hint').disabled = true;
+    };
+    bindTypeSwitch(ex);
     const check = () => {
-      if (!input.value.trim()) return;
+      if (!input.value.trim() || input.disabled) return;
       const res = C.checkAnswer(input.value, it.fr);
       input.disabled = true;
-      $$('.accents button').forEach((b) => (b.disabled = true));
-      const hint = res === 'accent' ? 'Watch the accents!' : res === 'article' ? 'Remember the article — it shows the gender.' : '';
+      $$('.accents button, [data-typing]').forEach((b) => (b.disabled = true));
       input.classList.add(res === 'wrong' ? 'wrong' : 'right');
-      answered(ex, res !== 'wrong', { hint });
+      typeResult(ex, it, res);
     };
     $('#check').onclick = check;
-    keyHandler = (e) => { if (e.key === 'Enter' && !input.disabled) { e.preventDefault(); check(); } };
+    keyHandler = (e) => { if (e.key === 'Enter' && (e.target === input || e.target === document.body)) { e.preventDefault(); check(); } };
   }
 
   function exMatch(ex) {
@@ -754,6 +866,8 @@
         ${toggle('autoplay', 'Auto-play pronunciation', 'Hear each word automatically')}
         ${toggle('slowAudio', 'Slower audio', 'Play French audio at 75% speed')}
         ${toggle('sfx', 'Sound effects', 'Chimes for right and wrong answers')}
+        <label class="setting"><div><b>Writing exercises</b><small>How you spell French words</small></div>
+          <select id="typing">${[['tiles', 'Letter tiles (easiest)'], ['keyboard', 'Keyboard + hints'], ['off', 'Off — choose instead']].map(([v, l]) => `<option value="${v}" ${s.typing === v ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
         ${toggle('unlockAll', 'Unlock all units', 'Skip ahead if you already know some French')}
         <label class="setting"><div><b>Appearance</b><small>Light, dark or match your system</small></div>
           <select id="theme">${['auto', 'light', 'dark'].map((t) => `<option value="${t}" ${s.theme === t ? 'selected' : ''}>${t[0].toUpperCase() + t.slice(1)}</option>`).join('')}</select></label>
@@ -772,6 +886,7 @@
     $$('.goal-opt').forEach((b) => (b.onclick = () => { s.dailyGoal = Number(b.dataset.goal); save(); settings(); toast('🎯', `Daily goal: ${s.dailyGoal} XP`); }));
     $$('.switch').forEach((c) => (c.onchange = () => { s[c.dataset.key] = c.checked; save(); }));
     $('#theme').onchange = (e) => { s.theme = e.target.value; save(); applyTheme(); };
+    $('#typing').onchange = (e) => { s.typing = e.target.value; save(); toast('✓', 'Writing exercises updated'); };
     $('#export').onclick = () => {
       const blob = new Blob([JSON.stringify(state, null, 2)], { type: 'application/json' });
       const a = document.createElement('a');

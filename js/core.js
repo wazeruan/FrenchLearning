@@ -10,6 +10,8 @@
     [0, 'Débutant'], [50, 'Curieux'], [150, 'Apprenti'], [300, 'Voyageur'], [500, 'Bavard'],
     [800, 'Flâneur'], [1200, 'Gourmet'], [1700, 'Connaisseur'], [2300, 'Parisien'], [3000, 'Maître'],
   ];
+  // How 'type' exercises are shown: tap letter tiles, keyboard with hints, or replaced by multiple choice.
+  const TYPING_MODES = ['tiles', 'keyboard', 'off'];
   const GOALS = [
     { xp: 10, label: 'Détente', en: 'Casual' },
     { xp: 20, label: 'Régulier', en: 'Regular' },
@@ -40,7 +42,7 @@
     return {
       version: 1,
       createdAt: dayKey(),
-      settings: { name: '', dailyGoal: 20, autoplay: true, sfx: true, slowAudio: false, unlockAll: false, theme: 'auto' },
+      settings: { name: '', dailyGoal: 20, autoplay: true, sfx: true, slowAudio: false, unlockAll: false, theme: 'auto', typing: 'tiles' },
       xp: 0,
       daily: {},          // day -> { xp, lessons, reviews }
       streak: { current: 0, best: 0, lastDay: null },
@@ -64,6 +66,7 @@
     s.settings.dailyGoal = GOALS.some((g) => g.xp === rs.dailyGoal) ? rs.dailyGoal : s.settings.dailyGoal;
     for (const k of ['autoplay', 'sfx', 'slowAudio', 'unlockAll']) if (typeof rs[k] === 'boolean') s.settings[k] = rs[k];
     if (['auto', 'light', 'dark'].includes(rs.theme)) s.settings.theme = rs.theme;
+    if (TYPING_MODES.includes(rs.typing)) s.settings.typing = rs.typing;
     s.createdAt = day(raw.createdAt, s.createdAt);
     s.xp = num(raw.xp);
     if (isObj(raw.stats)) for (const k of Object.keys(s.stats)) s.stats[k] = num(raw.stats[k]);
@@ -188,6 +191,30 @@
     if (a2 && a2 === b2) return 'article';
     return 'wrong';
   }
+  // Spelling guide for a word: letters to fill in, with spaces and punctuation given for free.
+  function letterSlots(word) {
+    return Array.from(word).map((ch) => ({ ch, given: !/\p{L}/u.test(ch) }));
+  }
+  // Scrambled letters for the tile-spelling exercise (never in the original order when avoidable).
+  function spellingTiles(word, rng = Math.random) {
+    const letters = letterSlots(word).filter((s) => !s.given).map((s) => s.ch);
+    const out = shuffle(letters, rng);
+    if (out.join('') === letters.join('')) {
+      // Still in order: swap the first pair of neighbouring letters that differ.
+      const i = out.findIndex((ch, k) => k + 1 < out.length && ch !== out[k + 1]);
+      if (i !== -1) [out[i], out[i + 1]] = [out[i + 1], out[i]];
+    }
+    return out;
+  }
+  // Fills the first n letters of a word, keeping the given characters in place.
+  function revealPrefix(word, n) {
+    let seen = 0, out = '';
+    for (const s of letterSlots(word)) {
+      if (!s.given) { if (seen >= n) break; seen++; }
+      out += s.ch;
+    }
+    return out;
+  }
   // Splits a sentence into tiles for the word-order exercise; standalone punctuation sticks to the previous word.
   function tokenize(sentence) {
     const out = [];
@@ -256,6 +283,11 @@
     const mid = Math.floor(singles.length / 2);
     return singles.slice(0, mid).concat([match], singles.slice(mid), [sentence]);
   }
+  // Turns a typing exercise into a multiple-choice one (used when typing is switched off).
+  function asChoice(data, ex, rng = Math.random) {
+    const item = findItem(data, ex.item);
+    return Object.assign(singleExercise('mc-en-fr', item, allItems(data), rng), { retry: ex.retry });
+  }
   function buildReview(data, ids, rng = Math.random) {
     const pool = allItems(data);
     return shuffle(ids, rng).map((id) => {
@@ -296,7 +328,7 @@
     { id: 'review-1', icon: '🔁', title: 'Révision', desc: 'Complete a daily review', test: (s) => s.stats.reviews >= 1 },
     { id: 'review-10', icon: '♻️', title: 'Assidu', desc: 'Complete 10 reviews', test: (s) => s.stats.reviews >= 10 },
     { id: 'listen-25', icon: '🎧', title: 'Oreille fine', desc: 'Answer 25 listening exercises', test: (s) => s.stats.listenCorrect >= 25 },
-    { id: 'typed-25', icon: '⌨️', title: 'Plume d\'or', desc: 'Type 25 correct answers', test: (s) => s.stats.typedCorrect >= 25 },
+    { id: 'typed-25', icon: '⌨️', title: 'Plume d\'or', desc: 'Spell 25 words correctly', test: (s) => s.stats.typedCorrect >= 25 },
     { id: 'early', icon: '🌅', title: 'Lève-tôt', desc: 'Study before 8 am', test: (s) => s.stats.earlyBird >= 1 },
     { id: 'night', icon: '🦉', title: 'Oiseau de nuit', desc: 'Study after 10 pm', test: (s) => s.stats.nightOwl >= 1 },
     { id: 'xp-500', icon: '⭐', title: 'Étoile montante', desc: 'Earn 500 XP', test: (s) => s.xp >= 500 },
@@ -373,11 +405,11 @@
   }
 
   const Core = {
-    STORAGE_KEY, XP, INTERVALS, LEVELS, GOALS, ACHIEVEMENTS,
+    STORAGE_KEY, XP, INTERVALS, LEVELS, GOALS, TYPING_MODES, ACHIEVEMENTS,
     dayKey, addDays, diffDays, defaultState, migrate,
     levelFor, todayXp, currentStreak, recordActivity,
     reviewAnswer, dueWords, weakestWords, masteredCount,
-    normalize, checkAnswer, tokenize,
+    normalize, checkAnswer, tokenize, letterSlots, spellingTiles, revealPrefix, asChoice,
     mulberry32, shuffle, allItems, findItem, buildLesson, buildReview,
     completedUnits, unitUnlocked, starsFor, evaluateProgress, completeLesson, completeReview,
   };

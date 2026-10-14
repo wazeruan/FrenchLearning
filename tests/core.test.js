@@ -708,3 +708,109 @@ test('data integrity: unique ids, audio and cover files exist', () => {
   const milestoneAfters = DATA.milestones.map((m) => m.after);
   assert.ok(milestoneAfters.every((a) => a <= DATA.units.length));
 });
+
+// ---------------------------------------------------------------- typing modes / spelling helpers
+const ITEMS = Core.allItems(DATA);
+const lettersOf = (w) => Core.letterSlots(w).filter((s) => !s.given).map((s) => s.ch);
+const sorted = (a) => a.slice().sort();
+// Puts tiles back into the word's letter slots, keeping given characters in place.
+const reassemble = (word, tiles) => {
+  let i = 0;
+  return Core.letterSlots(word).map((s) => (s.given ? s.ch : tiles[i++])).join('');
+};
+
+test('TYPING_MODES and default typing setting', () => {
+  assert.deepEqual(Core.TYPING_MODES, ['tiles', 'keyboard', 'off']);
+  assert.equal(fresh().settings.typing, 'tiles');
+});
+
+test('migrate: keeps a valid settings.typing, otherwise falls back to tiles', () => {
+  for (const m of Core.TYPING_MODES) assert.equal(Core.migrate({ settings: { typing: m } }).settings.typing, m);
+  for (const bad of [undefined, null, '', 'TILES', 'voice', 1, true, {}, ['off']]) {
+    assert.equal(Core.migrate({ settings: { typing: bad } }).settings.typing, 'tiles', `typing=${String(bad)}`);
+  }
+  assert.equal(Core.migrate({}).settings.typing, 'tiles');
+  assert.equal(Core.migrate({ settings: 'junk' }).settings.typing, 'tiles');
+});
+
+test('letterSlots: letters vs given characters', () => {
+  assert.deepEqual(Core.letterSlots("c'est ?").map((s) => s.given), [false, true, false, false, false, true, true]);
+  assert.deepEqual(Core.letterSlots('l\'œuf').filter((s) => !s.given).map((s) => s.ch), ['l', 'œ', 'u', 'f']);
+  assert.deepEqual(Core.letterSlots('grand-mère').filter((s) => s.given).map((s) => s.ch), ['-']);
+  assert.deepEqual(Core.letterSlots('é').map((s) => s.given), [false]);
+  assert.deepEqual(Core.letterSlots(''), []);
+  for (const it of ITEMS) assert.equal(Core.letterSlots(it.fr).map((s) => s.ch).join(''), it.fr, it.id);
+});
+
+test('spellingTiles: every item gives exactly its letters, reassembling to the word', () => {
+  for (const it of ITEMS) {
+    for (const seed of [1, 2, 3]) {
+      const tiles = Core.spellingTiles(it.fr, Core.mulberry32(seed));
+      assert.deepEqual(sorted(tiles), sorted(lettersOf(it.fr)), it.id);
+      assert.equal(reassemble(it.fr, lettersOf(it.fr)), it.fr, it.id);
+      // Tiles placed in the right order make an exact answer.
+      const answer = reassemble(it.fr, lettersOf(it.fr));
+      assert.equal(Core.checkAnswer(answer, it.fr), 'exact', it.id);
+    }
+  }
+});
+
+test('spellingTiles: never in original order for words with >= 2 distinct letters', () => {
+  const failures = [];
+  for (const it of ITEMS) {
+    const letters = lettersOf(it.fr);
+    if (new Set(letters).size < 2) continue;
+    for (let seed = 1; seed <= 20; seed++) {
+      const tiles = Core.spellingTiles(it.fr, Core.mulberry32(seed));
+      if (tiles.join('') === letters.join('')) failures.push(`${it.fr}@${seed}`);
+    }
+  }
+  assert.deepEqual(failures, []);
+});
+
+test('spellingTiles: degenerate inputs', () => {
+  assert.deepEqual(Core.spellingTiles('', Core.mulberry32(1)), []);
+  assert.deepEqual(Core.spellingTiles('a', Core.mulberry32(1)), ['a']);
+  assert.deepEqual(Core.spellingTiles('aa', Core.mulberry32(1)), ['a', 'a']);
+  assert.deepEqual(Core.spellingTiles(" ' ? ", Core.mulberry32(1)), []);
+});
+
+test('revealPrefix: examples and bounds for every item', () => {
+  assert.equal(Core.revealPrefix("c'est combien ?", 1), "c'");
+  assert.equal(Core.revealPrefix("c'est combien ?", 2), "c'e");
+  assert.equal(Core.revealPrefix("c'est combien ?", 4), "c'est ");
+  assert.equal(Core.revealPrefix('bonjour', 3), 'bon');
+  for (const it of ITEMS) {
+    const total = lettersOf(it.fr).length;
+    assert.equal(Core.revealPrefix(it.fr, 0), '', it.id);
+    assert.equal(Core.revealPrefix(it.fr, total), it.fr, it.id);
+    assert.equal(Core.revealPrefix(it.fr, total + 5), it.fr, it.id);
+    let prev = '';
+    for (let n = 0; n <= total; n++) {
+      const p = Core.revealPrefix(it.fr, n);
+      assert.ok(it.fr.startsWith(p), `${it.id} n=${n}`);
+      assert.equal(lettersOf(p).length, n, `${it.id} n=${n}`);
+      assert.ok(p.length >= prev.length, `${it.id} monotonic`);
+      // Prefix ends on a letter, or includes given chars that follow it.
+      if (n > 0 && n < total) assert.ok(!Core.letterSlots(it.fr)[p.length].given, `${it.id} n=${n} stops before next letter`);
+      prev = p;
+    }
+  }
+});
+
+test('asChoice: valid mc-en-fr for every item, retry preserved', () => {
+  for (const it of ITEMS) {
+    for (const retry of [undefined, true]) {
+      const ex = Core.asChoice(DATA, { type: 'type', item: it.id, retry }, Core.mulberry32(it.id.length + 3));
+      assert.equal(ex.type, 'mc-en-fr', it.id);
+      assert.equal(ex.item, it.id);
+      assert.equal(ex.retry, retry);
+      assert.equal(ex.options.length, 4, it.id);
+      assert.equal(ex.options.filter((o) => o.id === it.id).length, 1, it.id);
+      assert.equal(ex.options.find((o) => o.id === it.id).text, it.fr);
+      assert.equal(new Set(ex.options.map((o) => o.text)).size, 4, `${it.id} distinct texts`);
+      assert.equal(new Set(ex.options.map((o) => o.id)).size, 4, `${it.id} distinct ids`);
+      for (const o of ex.options) assert.equal(Core.findItem(DATA, o.id).fr, o.text);
+    }
+  }
+});

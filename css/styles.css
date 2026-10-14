@@ -301,6 +301,27 @@ a.node-link:hover { transform: translateY(-2px); box-shadow: 0 2px 4px rgba(35, 
 .accents { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
 .accents button { width: 40px; height: 40px; border-radius: 10px; border: 1px solid var(--line); background: var(--surface); font-family: var(--serif); font-size: 1.15rem; }
 .accents button:hover:not(:disabled) { border-color: var(--navy); }
+.accents .hint-btn { width: auto; padding: 0 12px; font-family: var(--sans); font-size: .9rem; font-weight: 700; background: var(--gold-soft); border-color: transparent; }
+.link-btn { margin-top: 14px; border: 0; background: none; color: var(--navy); font-weight: 600; text-decoration: underline; text-underline-offset: 3px; }
+.link-btn:disabled { visibility: hidden; }
+.prompt-pic .speaker { margin-left: auto; }
+
+/* spelling guide & letter tiles */
+.guide, .spell { display: flex; flex-wrap: wrap; justify-content: center; align-items: flex-end; column-gap: 18px; row-gap: 10px; margin: 4px 0 14px; font-family: var(--serif); }
+.wgroup { display: inline-flex; align-items: flex-end; gap: 6px; white-space: nowrap; }
+.guide .wgroup > span, .spell .wgroup > span { display: grid; place-items: end center; min-width: 22px; height: 30px; padding-bottom: 2px; border-bottom: 3px solid var(--line); font-size: 1.3rem; color: var(--navy); }
+.guide .wgroup > span.given, .spell .wgroup > span.given { min-width: 8px; border-bottom: 0; color: var(--muted); }
+.spell { min-height: 56px; padding: 8px 0 14px; }
+.spell .wgroup > span { min-width: 30px; height: 42px; font-size: 1.7rem; }
+.spell .wgroup > span.cur { border-bottom-color: var(--navy); }
+.spell .wgroup > span.filled { border-bottom-color: var(--navy); }
+.spell.right .wgroup > span:not(.given) { color: var(--green); border-bottom-color: var(--green); }
+.spell.wrong .wgroup > span:not(.given) { color: var(--red); border-bottom-color: var(--red); }
+.letters { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
+.letter { width: 48px; height: 52px; border-radius: 12px; border: 2px solid var(--line); background: var(--surface); box-shadow: 0 2px 0 var(--line); font-family: var(--serif); font-size: 1.45rem; transition: transform .08s; }
+.letter:active:not(:disabled) { transform: translateY(2px); box-shadow: none; }
+.letter.used { visibility: hidden; }
+.letter.back-key { width: 64px; font-family: var(--sans); font-size: 1.2rem; color: var(--muted); background: var(--surface-2); }
 
 .match { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .match .col { display: flex; flex-direction: column; gap: 10px; }
