@@ -73,6 +73,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate, WKNaviga
         out.webgpu = !!(navigator.gpu && await navigator.gpu.requestAdapter());
         out.mic = !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
         out.units = window.FR_DATA ? FR_DATA.units.length : 0;
+        try { // the microphone tap used for instant recording must load under the app's security policy
+          const actx = new AudioContext(); await actx.audioWorklet.addModule('js/mic-worklet.js');
+          new AudioWorkletNode(actx, 'mic-tap'); await actx.close(); out.micTap = true;
+        } catch (e) { out.micTap = 'failed: ' + e.message; }
         try {
           const w = new Worker('js/asr-worker.js', { type: 'module' });
           const send = (msg, t) => new Promise((res, rej) => { w.onmessage = ({ data }) => { if (data.type === 'progress') return; data.type === 'error' ? rej(new Error(data.message)) : res(data); }; w.onerror = (e) => rej(new Error('worker error ' + (e.message || ''))); w.postMessage(msg, t || []); });

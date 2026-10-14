@@ -64,13 +64,20 @@ async function transcribe(audio, hint) {
 }
 
 // One job at a time: ONNX sessions must not run two generations concurrently.
+// A newer "supersede" request makes older queued ones pointless; they are skipped instead of run.
 let queue = Promise.resolve();
-self.onmessage = ({ data }) => { queue = queue.then(() => handle(data)); };
+let newest = 0;
+self.onmessage = ({ data }) => {
+  if (data.type === 'transcribe' && data.supersede) newest = Math.max(newest, data.id);
+  queue = queue.then(() => handle(data));
+};
 async function handle(data) {
   try {
     if (data.type === 'load') {
       const { backend } = await load();
       postMessage({ type: 'ready', backend });
+    } else if (data.type === 'transcribe' && data.supersede && data.id < newest) {
+      postMessage({ type: 'error', id: data.id, message: 'superseded' });
     } else if (data.type === 'transcribe') {
       postMessage({ type: 'result', id: data.id, text: await transcribe(data.audio, data.hint) });
     }

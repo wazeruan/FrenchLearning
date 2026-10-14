@@ -157,11 +157,11 @@
   // ---------- speech (offline pronunciation check) ----------
   // Recording stays in this browser; recognition runs locally in a worker (js/asr-worker.js).
   const Speech = {
-    worker: null, loading: null, pending: new Map(), seq: 0, onProgress: null, stopRecording: null, token: 0,
+    worker: null, loading: null, pending: new Map(), seq: 0, onProgress: null, token: 0,
     missing: false, backend: null, // missing: the model could not be loaded (not installed) — hide speaking UI
     available() {
       return /^https?:$/.test(location.protocol) && !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia) &&
-        'MediaRecorder' in window && 'Worker' in window && 'OfflineAudioContext' in window;
+        'AudioWorkletNode' in window && 'Worker' in window && 'OfflineAudioContext' in window;
     },
     enabled() { return state.settings.speaking && this.available() && !this.missing; },
     load() {
@@ -193,85 +193,141 @@
       return this.loading;
     },
     // hint: vocabulary given to the recognizer as context (nudges it toward course words).
-    async transcribe(audio, hint) {
+    // supersede: older queued checks that haven't started yet are skipped (only the newest attempt matters).
+    async transcribe(audio, hint, { supersede = false } = {}) {
       await this.load();
       const id = ++this.seq;
       return new Promise((resolve, reject) => {
         const limit = this.backend === 'webgpu' ? 20000 : 60000;
         const timer = setTimeout(() => { this.pending.delete(id); reject(new Error('Recognition took too long. Try again.')); }, limit);
         this.pending.set(id, { resolve: (v) => { clearTimeout(timer); resolve(v); }, reject: (e) => { clearTimeout(timer); reject(e); } });
-        this.worker.postMessage({ type: 'transcribe', id, audio, hint }, [audio.buffer]);
+        this.worker.postMessage({ type: 'transcribe', id, audio, hint, supersede }, [audio.buffer]);
       });
     },
-    // Records until stop() or maxMs; reports the input level (0..1) while recording.
-    // Resolves to null if cancelled (e.g. the learner navigated away during the permission prompt).
-    async record(maxMs, onLevel) {
-      const token = this.token;
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, channelCount: 1 } });
-      let ctx = null, raf = 0, timer = 0;
-      try {
-        if (token !== this.token) return null;
-        const rec = new MediaRecorder(stream);
-        const chunks = [];
-        rec.ondataavailable = (e) => { if (e.data.size) chunks.push(e.data); };
-        const stopped = new Promise((r) => (rec.onstop = r));
+    // Invalidates pending results (e.g. after navigation) and discards an unfinished recording.
+    cancel() { this.token++; Mic.abort(); },
+  };
+
+  // ---------- microphone (kept warm while practising) ----------
+  // After the first tap, the mic stays open on speaking screens so the next recording starts instantly;
+  // a rolling 0.8 s buffer means words started just before the tap are kept too. It closes when you
+  // leave the page or after a minute without use.
+  const PREROLL_S = 0.8;
+  const Mic = {
+    stream: null, ctx: null, opening: null, rate: 48000, ring: [], ringLen: 0, rec: null, onChunk: null, idle: 0,
+    owner: 0, seq: 0, gen: 0, // owner: id of the recording in progress; gen: bumped by close() to cancel a pending open()
+    get live() { return !!(this.stream && this.stream.active && this.ctx && this.ctx.state === 'running'); },
+    get recording() { return !!this.rec; },
+    async open() {
+      if (this.live) { this.touch(); return; }
+      if (this.ctx && this.stream && this.stream.active && this.ctx.state !== 'closed') { // paused by the system (sleep, device change)
+        await Promise.race([this.ctx.resume(), new Promise((r) => setTimeout(r, 800))]);
+        if (this.live) { this.touch(); return; }
+        this.close();
+      }
+      if (this.opening) return this.opening;
+      const gen = this.gen;
+      this.opening = (async () => {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, channelCount: 1 } });
         try {
-          ctx = new (window.AudioContext || window.webkitAudioContext)();
-          const an = ctx.createAnalyser();
-          an.fftSize = 512;
-          ctx.createMediaStreamSource(stream).connect(an);
-          const buf = new Float32Array(an.fftSize);
-          const tick = () => {
-            an.getFloatTimeDomainData(buf);
-            let sum = 0;
-            for (const v of buf) sum += v * v;
-            if (onLevel) onLevel(Math.min(1, Math.sqrt(sum / buf.length) * 6));
-            raf = requestAnimationFrame(tick);
-          };
-          tick();
-        } catch (e) { /* level meter is optional */ }
-        rec.start();
-        this.stopRecording = () => { if (rec.state === 'recording') rec.stop(); };
-        timer = setTimeout(this.stopRecording, maxMs);
-        await stopped;
-        return token === this.token ? new Blob(chunks, { type: rec.mimeType || 'audio/webm' }) : null;
-      } finally {
-        clearTimeout(timer);
-        cancelAnimationFrame(raf);
-        if (ctx) ctx.close().catch(() => {});
-        stream.getTracks().forEach((t) => t.stop());
-        this.stopRecording = null;
-      }
+          const ctx = new (window.AudioContext || window.webkitAudioContext)();
+          await ctx.audioWorklet.addModule('js/mic-worklet.js');
+          const node = new AudioWorkletNode(ctx, 'mic-tap');
+          const mute = ctx.createGain();
+          mute.gain.value = 0; // keeps the graph running without playing the mic back
+          ctx.createMediaStreamSource(stream).connect(node);
+          node.connect(mute).connect(ctx.destination);
+          node.port.onmessage = ({ data }) => this.push(data);
+          // resume() can stay pending without a user gesture; don't wait for it forever.
+          if (ctx.state !== 'running') await Promise.race([ctx.resume(), new Promise((r) => setTimeout(r, 800))]);
+          if (gen !== this.gen) { stream.getTracks().forEach((t) => t.stop()); ctx.close().catch(() => {}); return; } // closed meanwhile
+          if (ctx.state !== 'running') { stream.getTracks().forEach((t) => t.stop()); ctx.close().catch(() => {}); throw new Error('The microphone could not start. Tap the mic again.'); }
+          Object.assign(this, { stream, ctx, rate: ctx.sampleRate, ring: [], ringLen: 0 });
+        } catch (e) {
+          stream.getTracks().forEach((t) => t.stop());
+          throw e;
+        }
+        this.touch();
+      })().finally(() => { this.opening = null; });
+      return this.opening;
     },
-    cancel() { this.token++; if (this.stopRecording) this.stopRecording(); },
-    // Decodes a recording to 16 kHz mono and trims silence. Returns { pcm, peak }.
-    async toPcm(blob) {
-      const ctx = new (window.AudioContext || window.webkitAudioContext)();
-      let decoded;
-      try { decoded = await ctx.decodeAudioData(await blob.arrayBuffer()); }
-      catch (e) { return { pcm: new Float32Array(0), peak: 0 }; } // too short to decode: treat as silence
-      finally { ctx.close().catch(() => {}); }
-      const off = new OfflineAudioContext(1, Math.max(1, Math.ceil(decoded.duration * 16000)), 16000);
-      const src = off.createBufferSource();
-      src.buffer = decoded;
-      src.connect(off.destination);
-      src.start();
-      const pcm = (await off.startRendering()).getChannelData(0);
-      const frame = 320, rms = [];
-      for (let i = 0; i < pcm.length; i += frame) {
-        let sum = 0;
-        const end = Math.min(pcm.length, i + frame);
-        for (let j = i; j < end; j++) sum += pcm[j] * pcm[j];
-        rms.push(Math.sqrt(sum / (end - i)));
+    push(chunk) {
+      if (this.rec) {
+        this.rec.push(chunk);
+        if (this.onChunk) this.onChunk(chunk);
+        return;
       }
-      const peak = Math.max(0, ...rms);
-      const thr = Math.max(0.01, peak * 0.12);
-      const first = rms.findIndex((v) => v > thr), last = rms.length - 1 - [...rms].reverse().findIndex((v) => v > thr);
-      if (first < 0) return { pcm: new Float32Array(0), peak };
-      const pad = 0.2 * 16000;
-      return { pcm: pcm.slice(Math.max(0, first * frame - pad), Math.min(pcm.length, (last + 1) * frame + pad)), peak };
+      this.ring.push(chunk);
+      this.ringLen += chunk.length;
+      while (this.ring.length > 1 && this.ringLen - this.ring[0].length > this.rate * PREROLL_S) this.ringLen -= this.ring.shift().length;
+    },
+    // Starts recording (including the rolling pre-roll buffer); returns an id that owns the recording.
+    start(onChunk) {
+      clearTimeout(this.idle);
+      this.rec = this.ring;
+      this.ring = [];
+      this.ringLen = 0;
+      this.onChunk = onChunk;
+      return (this.owner = ++this.seq);
+    },
+    // Discards the recording in progress, whoever owns it.
+    abort() { this.rec = null; this.onChunk = null; this.owner = 0; },
+    // Ends the recording `id` and returns its samples (at this.rate), or null if it isn't the current one.
+    stop(id) {
+      if (!id || id !== this.owner) return null;
+      const chunks = this.rec || [];
+      this.rec = null;
+      this.onChunk = null;
+      this.owner = 0;
+      const out = new Float32Array(chunks.reduce((a, c) => a + c.length, 0));
+      let o = 0;
+      for (const c of chunks) { out.set(c, o); o += c.length; }
+      this.touch();
+      return out;
+    },
+    touch() { clearTimeout(this.idle); this.idle = setTimeout(() => this.close(), 60000); },
+    close() {
+      clearTimeout(this.idle);
+      this.gen++;
+      this.abort();
+      if (this.stream) this.stream.getTracks().forEach((t) => t.stop());
+      if (this.ctx) this.ctx.close().catch(() => {});
+      Object.assign(this, { stream: null, ctx: null, ring: [], ringLen: 0 });
     },
   };
+  const rmsOf = (a) => { let s = 0; for (let i = 0; i < a.length; i++) s += a[i] * a[i]; return Math.sqrt(s / (a.length || 1)); };
+
+  // Resamples a recording to 16 kHz mono (what Whisper expects) and trims silence. Returns { pcm, peak }.
+  async function toPcm16k(raw, rate) {
+    if (raw.length < rate * 0.1) return { pcm: new Float32Array(0), peak: 0 };
+    const off = new OfflineAudioContext(1, Math.ceil(raw.length * 16000 / rate), 16000);
+    const buf = off.createBuffer(1, raw.length, rate);
+    buf.copyToChannel(raw, 0);
+    const src = off.createBufferSource();
+    src.buffer = buf;
+    src.connect(off.destination);
+    src.start();
+    const pcm = (await off.startRendering()).getChannelData(0);
+    const frame = 320, rms = [];
+    for (let i = 0; i < pcm.length; i += frame) rms.push(rmsOf(pcm.subarray(i, i + frame)));
+    const peak = Math.max(0, ...rms);
+    const thr = Math.max(0.01, peak * 0.12);
+    const first = rms.findIndex((v) => v > thr), last = rms.length - 1 - [...rms].reverse().findIndex((v) => v > thr);
+    if (first < 0) return { pcm: new Float32Array(0), peak };
+    const pad = 0.2 * 16000;
+    return { pcm: pcm.slice(Math.max(0, first * frame - pad), Math.min(pcm.length, (last + 1) * frame + pad)), peak };
+  }
+  // 16-bit WAV, for "Your voice" playback.
+  function wavBlob(pcm, rate) {
+    const view = new DataView(new ArrayBuffer(44 + pcm.length * 2));
+    const str = (o, t) => [...t].forEach((c, i) => view.setUint8(o + i, c.charCodeAt(0)));
+    str(0, 'RIFF'); view.setUint32(4, 36 + pcm.length * 2, true); str(8, 'WAVE'); str(12, 'fmt ');
+    view.setUint32(16, 16, true); view.setUint16(20, 1, true); view.setUint16(22, 1, true);
+    view.setUint32(24, rate, true); view.setUint32(28, rate * 2, true); view.setUint16(32, 2, true); view.setUint16(34, 16, true);
+    str(36, 'data'); view.setUint32(40, pcm.length * 2, true);
+    pcm.forEach((v, i) => view.setInt16(44 + i * 2, Math.max(-1, Math.min(1, v)) * 0x7fff, true));
+    return new Blob([view], { type: 'audio/wav' });
+  }
 
   const SPEAK_FEEDBACK = {
     great: { icon: '🎉', title: 'Excellent !', sub: 'That sounded right.' },
@@ -281,61 +337,89 @@
   function speakWidget(it) {
     return `<div class="speak" data-speak>
       <button type="button" class="mic" aria-label="Record yourself saying ${esc(it.fr)}">${ICON.mic}</button>
-      <div class="speak-body"><p class="speak-status">Tap the mic and say <b lang="fr">${fr(it.fr)}</b></p><div class="speak-result" hidden></div></div>
+      <div class="speak-body"><p class="speak-status" role="status" aria-live="polite">Tap the mic and say <b lang="fr">${fr(it.fr)}</b></p><div class="speak-result" hidden></div></div>
     </div>`;
   }
-  // Wires a speak widget: record → recognize locally → score → feedback. onScore(score) after each attempt.
+  // Wires a speak widget. Recording and recognition are independent: tap → record at once (the mic is
+  // kept warm, recording stops by itself after you finish speaking) → recognition runs in the background
+  // while you can already record again; only the latest attempt's result is shown. onScore(score) per result.
   function bindSpeak(el, it, onScore) {
     const mic = $('.mic', el), status = $('.speak-status', el), result = $('.speak-result', el);
-    let busy = false, voiceUrl = null;
+    let attempts = 0, voiceUrl = null, finish = null;
     const setStatus = (html) => { if (el.isConnected) status.innerHTML = html; };
-    const resetMic = () => {
-      el.classList.remove('recording');
-      el.style.setProperty('--lvl', 0);
-      mic.innerHTML = ICON.mic;
-      mic.setAttribute('aria-label', `Record yourself saying ${it.fr}`);
+    const showMic = (recording) => {
+      el.classList.toggle('recording', recording);
+      if (!recording) el.style.setProperty('--lvl', 0);
+      mic.innerHTML = recording ? ICON.stop : ICON.mic;
+      mic.setAttribute('aria-label', recording ? 'Stop recording' : `Record yourself saying ${it.fr}`);
     };
     // Free the previous recording once the widget leaves the page.
     const cleanup = new MutationObserver(() => { if (!el.isConnected) { if (voiceUrl) URL.revokeObjectURL(voiceUrl); cleanup.disconnect(); } });
     cleanup.observe(document.getElementById('view'), { childList: true });
+    const unit = D.units.find((u) => u.items.some((x) => x.id === it.id));
+    const hint = unit ? unit.items.map((x) => x.fr).join(', ') + '.' : '';
+
     mic.onclick = async () => {
-      if (Speech.stopRecording) { Speech.stopRecording(); return; }
-      if (busy) return;
-      busy = true;
-      const token = Speech.token;
+      if (finish) return finish(); // tapping while recording stops it
+      if (Speech.missing) { el.hidden = true; return; }
       Sound.stop();
-      result.hidden = true;
+      Speech.load().catch(() => {}); // already warming up in the background; never waited on here
       try {
-        // Model loading progress is shown only until recording starts.
-        Speech.onProgress = (p) => { if (!el.classList.contains('recording')) setStatus(`Preparing Coco's ears… ${Math.round(p.progress || 0)}%`); };
-        const loading = Speech.load();
-        el.classList.add('recording');
-        mic.innerHTML = ICON.stop;
-        mic.setAttribute('aria-label', 'Stop recording');
-        setStatus('Listening… say it, then tap ■');
-        const blob = await Speech.record(4000, (lvl) => el.style.setProperty('--lvl', lvl.toFixed(2)));
-        resetMic();
-        if (!blob || token !== Speech.token || !el.isConnected) return;
-        el.classList.add('thinking');
-        setStatus(Speech.backend === 'wasm' ? 'Coco is listening back… (this computer has no GPU support, so it can take ~10 s)' : 'Coco is listening back…');
-        const { pcm, peak } = await Speech.toPcm(blob);
-        if (voiceUrl) URL.revokeObjectURL(voiceUrl);
-        voiceUrl = URL.createObjectURL(blob);
-        if (pcm.length < 1600 || peak < 0.008) {
-          setStatus("I didn't hear anything — check your mic and speak a little louder.");
-          return;
-        }
-        await loading;
-        const unit = D.units.find((u) => u.items.some((x) => x.id === it.id));
-        let heard = await Speech.transcribe(pcm, unit ? unit.items.map((x) => x.fr).join(', ') + '.' : '');
-        if (token !== Speech.token || !el.isConnected) return;
+        if (!Mic.live) { setStatus('Opening the microphone…'); await Mic.open(); }
+      } catch (err) {
+        const denied = err && (err.name === 'NotAllowedError' || err.name === 'SecurityError');
+        return setStatus(denied ? 'Microphone access is blocked. Allow it for Coco · French, then try again.' : esc(err.message || 'The microphone could not be opened.'));
+      }
+      if (!el.isConnected || Mic.recording) return;
+      const token = Speech.token;
+      const attempt = ++attempts; // a new tap makes any older, still-running check stale
+      result.hidden = true;
+      el.classList.remove('thinking');
+      // End-of-speech detection: stop ~0.9 s after you finish talking (or after 6 s).
+      const floor = Math.max(0.006, ...Mic.ring.map(rmsOf).sort((x, y) => x - y).slice(0, 3));
+      let spoke = false, silent = 0, total = 0;
+      let recId = 0;
+      const myFinish = finish = () => {
+        if (finish !== myFinish) return;
+        finish = null;
+        clearTimeout(noSpeech);
+        showMic(false);
+        const raw = Mic.stop(recId); // null if this recording was discarded (page changed) — never touches a newer one
+        if (raw && token === Speech.token && el.isConnected) recognize(raw, Mic.rate || 48000, attempt, token);
+      };
+      const noSpeech = setTimeout(() => { if (!spoke && finish === myFinish) myFinish(); }, 5000);
+      recId = Mic.start((chunk) => {
+        const level = rmsOf(chunk);
+        el.style.setProperty('--lvl', Math.min(1, level * 6).toFixed(2));
+        total += chunk.length;
+        if (level > Math.max(0.015, floor * 3)) { spoke = true; silent = 0; } else if (spoke) silent += chunk.length;
+        if ((spoke && silent > Mic.rate * 0.9) || total > Mic.rate * 6) myFinish();
+      });
+      showMic(true);
+      setStatus('Listening… it stops by itself when you finish');
+    };
+
+    async function recognize(raw, rate, attempt, token) {
+      const current = () => attempt === attempts && token === Speech.token && el.isConnected;
+      el.classList.add('thinking');
+      setStatus(Speech.backend === 'wasm' ? 'Checking… (this computer has no GPU support, so it can take ~10 s)' : 'Checking… tap the mic anytime to try again');
+      Speech.onProgress = (p) => { if (current() && el.classList.contains('thinking')) setStatus(`Checking… Coco's ears are warming up (${Math.round(p.progress || 0)}%)`); };
+      try {
+        const { pcm, peak } = await toPcm16k(raw, rate);
+        if (!current()) return;
+        if (pcm.length < 1600 || peak < 0.008) return setStatus("I didn't hear anything — check your mic and speak a little louder.");
+        const voice = wavBlob(pcm, 16000);
+        let heard = await Speech.transcribe(pcm, hint, { supersede: true });
+        if (!current()) return; // a newer attempt (or navigation) replaced this one
         // On noise Whisper can echo the vocabulary hint back; a long list is not an answer.
         if (heard.split(/\s+/).length > it.fr.split(/\s+/).length + 4) heard = '';
+        if (voiceUrl) URL.revokeObjectURL(voiceUrl);
+        voiceUrl = URL.createObjectURL(voice);
         const score = C.pronunciationScore(heard, it.fr);
         const level = C.pronunciationLevel(score);
         const f = SPEAK_FEEDBACK[level];
         Sound.sfx(level === 'great' ? 'good' : level === 'close' ? 'tap' : 'bad');
-        setStatus(`Tap the mic to try again`);
+        setStatus('Tap the mic to try again');
         result.className = `speak-result ${level}`;
         result.innerHTML = `
           <div class="speak-score"><span class="speak-icon">${f.icon}</span><div><b>${f.title}</b><small>${f.sub}</small></div>
@@ -349,27 +433,20 @@
         $('[data-voice]', result).onclick = () => { Sound.stop(); const a = new Audio(voiceUrl); Sound.current = a; a.play().catch(() => {}); };
         if (level === 'great') {
           state.stats.spokenGood++;
-          const { achievements } = C.evaluateProgress(state, D);
-          save();
-          achievements.forEach((a) => toast(a.icon, `Achievement: ${a.title}`, a.desc));
+          C.evaluateProgress(state, D).achievements.forEach((a) => toast(a.icon, `Achievement: ${a.title}`, a.desc));
         }
-        const day = state.daily[today()] || (state.daily[today()] = { xp: 0, lessons: 0, reviews: 0, minutes: 0 });
+        const day = state.daily[today()] || (state.daily[today()] = { xp: 0, lessons: 0, reviews: 0, minutes: 0, listening: 0 });
         day.spoken = (day.spoken || 0) + 1;
         save();
         if (onScore) onScore(score);
       } catch (err) {
-        resetMic();
         if (!el.isConnected) return;
-        if (Speech.missing) { el.hidden = true; toast('🎤', 'Speaking practice unavailable', 'Run scripts/setup-speech.sh once to install the speech model.'); return; }
-        const denied = err && (err.name === 'NotAllowedError' || err.name === 'SecurityError');
-        setStatus(denied
-          ? 'Microphone access is blocked. Allow it from the browser’s address bar, then try again.'
-          : esc((err && err.message) || 'Something went wrong with speech recognition.'));
+        if (Speech.missing) { el.hidden = true; Mic.close(); toast('🎤', 'Speaking practice unavailable', 'Run scripts/setup-speech.sh once to install the speech model.'); return; }
+        if (current()) setStatus(esc((err && err.message) || 'Something went wrong with speech recognition.'));
       } finally {
-        busy = false;
-        el.classList.remove('thinking');
+        if (attempt === attempts) el.classList.remove('thinking');
       }
-    };
+    }
   }
 
   // ---------- toasts & confetti ----------
@@ -433,6 +510,7 @@
     keyHandler = null;
     timers.forEach(clearTimeout); timers = [];
     Speech.cancel();
+    Mic.close(); // the mic only stays open while you stay on a speaking screen
     session = null;
     const [name, arg] = location.hash.replace(/^#\/?/, '').split('/');
     const routes = { '': home, unit: unitIntro, learn, grammar: grammarLesson, dialogue: dialogueView, practice: startPractice, review, progress, settings };
@@ -1415,4 +1493,6 @@
     if (!session) route();
   });
   route();
+  // Load the speech model shortly after start-up, so the first pronunciation check is fast.
+  if (Speech.enabled()) setTimeout(() => Speech.load().catch(() => {}), 1500);
 })();
