@@ -1,0 +1,8 @@
+.DS_Store
+node_modules/
+*.aiff
+.tmp/
+*.log
+.env
+sheet.tmp.html
+*.tmp.html
