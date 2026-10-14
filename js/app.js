@@ -504,14 +504,14 @@
     const hasWords = Object.keys(state.words).length > 0;
     const steps = [
       // Nothing to review yet (or nothing due) counts as done.
-      { done: (day.reviews || 0) > 0 || !due, href: hasWords ? '#/review' : `#/unit/${next.id}`, label: due ? `🔁 Review ${due} word${due === 1 ? '' : 's'}` : hasWords ? '🔁 Review — all caught up' : '🔁 Review (after your first lesson)', mins: 5 },
+      { done: hasWords && ((day.reviews || 0) > 0 || !due), na: !hasWords, href: hasWords ? '#/review' : `#/unit/${next.id}`, label: due ? `🔁 Review ${due} word${due === 1 ? '' : 's'}` : hasWords ? '🔁 Review — all caught up' : '🔁 Review — starts after your first lesson', mins: 5 },
       { done: (day.lessons || 0) > 0, href: `#/unit/${next.id}`, label: `📘 ${esc(next.title)}`, mins: 15 },
       { done: drill.dialogue ? (day.listening || 0) > 0 : (day.spoken || 0) > 0, href: drill.href, label: esc(drill.label), mins: 10 },
     ];
     const mins = Math.round(day.minutes || 0);
-    return `<section class="card today">
+    return `<section class="card today-card">
       <div class="today-head"><h3>Today's 30 minutes</h3><span class="today-min">${mins} min studied</span></div>
-      <ol class="steps">${steps.map((st) => `<li class="${st.done ? 'done' : ''}"><a href="${st.href}">
+      <ol class="steps">${steps.map((st) => `<li class="${st.done ? 'done' : st.na ? 'na' : ''}"><a href="${st.href}">
         <span class="check">${st.done ? ICON.check : ''}</span><span class="step-label">${st.label}</span><small>~${st.mins} min</small></a></li>`).join('')}</ol>
     </section>`;
   }
@@ -794,6 +794,7 @@
   // ---------- practice sessions ----------
   let keyHandler = null;
   document.addEventListener('keydown', (e) => {
+    if (e.metaKey || e.ctrlKey || e.altKey) return; // menu shortcuts (Cmd+1…4, Cmd+R) are not answers
     const t = e.target instanceof Element ? e.target : document.body;
     if (t.matches('input[type=text], textarea') && e.key !== 'Enter') return;
     // Let focused links/buttons handle their own Enter/Space (except the main action buttons).

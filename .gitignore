@@ -8,3 +8,4 @@ sheet.tmp.html
 *.tmp.html
 models/
 vendor/
+build/

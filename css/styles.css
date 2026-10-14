@@ -531,7 +531,7 @@ label.btn { cursor: pointer; }
 .stage-count { font-weight: 700; opacity: .9; }
 .node.grammar .node-text small { color: var(--navy); }
 .node.dialogue .node-text small { color: var(--red); }
-.today { padding: 16px 18px; }
+.today-card { padding: 16px 18px; }
 .today-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
 .today-head h3 { margin: 0 0 8px; }
 .today-min { font-weight: 700; color: var(--muted); font-size: .9rem; }
@@ -604,3 +604,8 @@ label.btn { cursor: pointer; }
 .q-opts { display: flex; flex-direction: column; gap: 8px; }
 .option.small { min-height: 48px; font-size: 1rem; }
 .center-row { justify-content: center; }
+
+/* Static rendering for the Mac app's --snapshot check (animations don't run in a hidden window). */
+.snapshot *, .snapshot *::before, .snapshot *::after { animation: none !important; transition: none !important; }
+.steps .na a { opacity: .6; }
+.steps .na .check { border-style: dashed; }

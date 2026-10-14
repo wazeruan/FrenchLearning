@@ -7,9 +7,14 @@ stages and the plan.
 
 ## Open the app
 
-- **Easiest:** double-click `start.command`. It serves the folder on `127.0.0.1:8642` (this machine only)
-  and opens your browser.
-- Or open `index.html` directly in Chrome/Edge/Firefox/Safari — everything except speaking practice works.
+- **Mac app (recommended):** open **Coco French** from Applications / Launchpad. It is a native window
+  with everything inside it (lessons, audio, offline speech model). Build or update it with
+  `./scripts/build-mac-app.sh --install` (needs Xcode Command Line Tools).
+- **In a browser:** double-click `start.command` (serves the folder on `127.0.0.1:8642`, this machine
+  only), or open `index.html` directly — everything except speaking practice works that way.
+
+Each way of opening keeps its own progress. To move progress, use **Settings → Export backup** in one
+and **Import backup** in the other.
 
 Progress is saved in the browser's local storage, which is tied to the address you open the app from.
 Pick one way and stick with it, or use **Settings → Export backup / Import backup** to move progress.
@@ -59,7 +64,8 @@ js/app.js           UI, routing, audio, recording, celebrations
 js/asr-worker.js    offline speech recognition (Whisper via transformers.js) in a Web Worker
 assets/audio/       <id>.m4a (word) and <id>-ex.m4a (example sentence)
 assets/img/         mascot and unit cover illustrations (SVG)
-scripts/            generators for audio and art, speech setup, local server
+macos/              the native Mac app (Swift: window + built-in localhost server)
+scripts/            generators for audio and art, speech setup, local server, build-mac-app.sh
 models/, vendor/    speech model + runtime (downloaded by setup-speech.sh, not in git)
 tests/              node:test unit tests for core.js
 ```
