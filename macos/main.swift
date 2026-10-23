@@ -47,10 +47,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate, WKNaviga
         web.allowsBackForwardNavigationGestures = true
         if #available(macOS 13.3, *) { web.isInspectable = true }
 
-        window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1000, height: 820),
+        window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1200, height: 840),
                           styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
         window.title = "Coco · French"
-        window.minSize = NSSize(width: 380, height: 560)
+        window.minSize = NSSize(width: 960, height: 640)
         window.contentView = web
         window.center()
         window.setFrameAutosaveName("CocoMainWindow")

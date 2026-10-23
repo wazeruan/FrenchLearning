@@ -241,7 +241,7 @@
           // resume() can stay pending without a user gesture; don't wait for it forever.
           if (ctx.state !== 'running') await Promise.race([ctx.resume(), new Promise((r) => setTimeout(r, 800))]);
           if (gen !== this.gen) { stream.getTracks().forEach((t) => t.stop()); ctx.close().catch(() => {}); return; } // closed meanwhile
-          if (ctx.state !== 'running') { stream.getTracks().forEach((t) => t.stop()); ctx.close().catch(() => {}); throw new Error('The microphone could not start. Tap the mic again.'); }
+          if (ctx.state !== 'running') { stream.getTracks().forEach((t) => t.stop()); ctx.close().catch(() => {}); throw new Error('The microphone could not start. Click the mic again.'); }
           Object.assign(this, { stream, ctx, rate: ctx.sampleRate, ring: [], ringLen: 0 });
         } catch (e) {
           stream.getTracks().forEach((t) => t.stop());
@@ -337,7 +337,7 @@
   function speakWidget(it) {
     return `<div class="speak" data-speak>
       <button type="button" class="mic" aria-label="Record yourself saying ${esc(it.fr)}">${ICON.mic}</button>
-      <div class="speak-body"><p class="speak-status" role="status" aria-live="polite">Tap the mic and say <b lang="fr">${fr(it.fr)}</b></p><div class="speak-result" hidden></div></div>
+      <div class="speak-body"><p class="speak-status" role="status" aria-live="polite">Click the mic and say <b lang="fr">${fr(it.fr)}</b></p><div class="speak-result" hidden></div></div>
     </div>`;
   }
   // Wires a speak widget. Recording and recognition are independent: tap → record at once (the mic is
@@ -402,7 +402,7 @@
     async function recognize(raw, rate, attempt, token) {
       const current = () => attempt === attempts && token === Speech.token && el.isConnected;
       el.classList.add('thinking');
-      setStatus(Speech.backend === 'wasm' ? 'Checking… (this computer has no GPU support, so it can take ~10 s)' : 'Checking… tap the mic anytime to try again');
+      setStatus(Speech.backend === 'wasm' ? 'Checking… (this computer has no GPU support, so it can take ~10 s)' : 'Checking… click the mic anytime to try again');
       Speech.onProgress = (p) => { if (current() && el.classList.contains('thinking')) setStatus(`Checking… Coco's ears are warming up (${Math.round(p.progress || 0)}%)`); };
       try {
         const { pcm, peak } = await toPcm16k(raw, rate);
@@ -419,7 +419,7 @@
         const level = C.pronunciationLevel(score);
         const f = SPEAK_FEEDBACK[level];
         Sound.sfx(level === 'great' ? 'good' : level === 'close' ? 'tap' : 'bad');
-        setStatus('Tap the mic to try again');
+        setStatus('Click the mic to try again');
         result.className = `speak-result ${level}`;
         result.innerHTML = `
           <div class="speak-score"><span class="speak-icon">${f.icon}</span><div><b>${f.title}</b><small>${f.sub}</small></div>
@@ -1232,7 +1232,7 @@
     const items = ex.pairs.map((id) => C.findItem(D, id));
     const left = C.shuffle(items), right = C.shuffle(items);
     $('#ex').innerHTML = `
-      <p class="instr">Tap the matching pairs</p>
+      <p class="instr">Click the matching pairs</p>
       <div class="match">
         <div class="col">${left.map((it) => `<button class="tile" data-id="${it.id}" data-side="fr" lang="fr">${fr(it.fr)}</button>`).join('')}</div>
         <div class="col">${right.map((it) => `<button class="tile" data-id="${it.id}" data-side="en">${esc(it.en)}</button>`).join('')}</div>

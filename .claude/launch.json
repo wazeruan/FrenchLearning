@@ -1,0 +1,6 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    { "name": "coco", "runtimeExecutable": "python3", "runtimeArgs": ["scripts/serve.py", "8791"], "port": 8791 }
+  ]
+}
