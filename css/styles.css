@@ -46,7 +46,7 @@ body {
   margin: 0; background: var(--bg); color: var(--ink);
   font: 16px/1.5 var(--sans);
   -webkit-font-smoothing: antialiased;
-  min-width: 960px; padding-left: var(--sidebar);
+  min-width: 900px; padding-left: var(--sidebar);
 }
 body.in-session { padding-left: 0; }
 h1, h2, h3 { font-family: var(--serif); font-weight: 600; line-height: 1.2; margin: 0 0 .4em; letter-spacing: -.01em; }
