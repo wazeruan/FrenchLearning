@@ -25,18 +25,26 @@ Pick one way and stick with it, or use **Settings → Export backup / Import bac
   adjectives, avoir and possessives, -er verbs, negation, questions, aller/faire, numbers to 100,
   telling time) and 3 Canadian-life dialogues (airport, grocery store, booking a clinic appointment).
 - **Each unit is a guided sequence:** words → grammar lesson or dialogue → practice.
-- **Seven exercise types:** meaning (FR→EN), translation (EN→FR), listening, spelling (letter tiles,
-  keyboard with hints, or off), matching pairs, sentence building, and grammar fill-in-the-blank.
+- **Ten exercise types:** meaning (FR→EN), translation (EN→FR), listening, spelling (letter tiles,
+  keyboard with hints, or off), matching pairs, sentence building, grammar fill-in-the-blank, plus:
+  - **Dictée** — hear an example sentence and write it down (word tiles, or typed with each word marked
+    right / accent-only / missing).
+  - **Le or la?** — choose the gender of four nouns shown without their article (including « l' » nouns),
+    colour-coded the same way everywhere (blue masculine, red feminine).
+  - **Find the mistake** (grammar units) — spot the one wrong form in a sentence, then see it corrected.
   Mistakes come back once at the end of the lesson.
 - **Dialogues** voiced by a Canadian (Amélie, fr_CA) and a French (Thomas) voice: listen first with the
   text blurred, answer comprehension questions, then read along.
+- **Role-play** 🎭 (dialogue units): take one part of the dialogue — hear the other person, choose your
+  reply, and say it aloud when speaking practice is on.
 - **"Today's 30 minutes":** review (~5 min), the next lesson (~15 min), and a listening or speaking drill
   (~10 min), with study time tracked.
 - **Daily review** with spaced repetition (Leitner boxes: 1, 2, 4, 8, 16 days).
 - **Motivation:** daily XP goal, day streaks, a weekly strip and activity heatmap, 10 levels, path
   milestones and 24 achievements.
-- **Speaking practice** 🎤: say a word and Coco checks your pronunciation — on flashcards and as
-  "Say it out loud" steps in lessons (practice only, never lowers your stars). See below.
+- **Speaking practice** 🎤: say a word and Coco checks your pronunciation — on flashcards, as a
+  "Say it out loud" step in lessons, and as **shadowing** (repeat a whole example sentence right after
+  Coco). Practice only, never lowers your stars. See below.
 - Light/dark themes, keyboard shortcuts (1–4 to choose, Enter to check/continue, ← → on flashcards).
 
 ## Speaking practice (offline)

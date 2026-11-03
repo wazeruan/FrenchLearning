@@ -299,8 +299,17 @@ test('buildLesson: structure for all 25 units and several seeds', () => {
       const tag = `${unit.id} seed ${seed}`;
       const singles = ex.filter((e) => SINGLE.has(e.type));
       assert.deepEqual(singles.map((e) => e.item).sort(), ids.slice().sort(), `${tag}: each item once`);
-      assert.equal(ex.length, ids.length + 2 + (unit.grammar ? 6 : 0), tag);
+      const genders = ex.filter((e) => e.type === 'gender').length;
+      const fills = new Set(ex.filter((e) => e.type === 'fill').map((e) => e.drill));
+      const spotable = unit.grammar ? unit.grammar.drills.filter((d, i) => !fills.has(i) && Core.spotDrill(d)).length : 0;
+      const spots = Math.min(2, spotable);
+      assert.equal(ex.length, ids.length + 3 + genders + (unit.grammar ? 6 : 0) + spots, tag);
       assert.equal(ex.filter((e) => e.type === 'fill').length, unit.grammar ? 6 : 0, tag);
+      assert.equal(ex.filter((e) => e.type === 'spot').length, spots, tag);
+      const dict = ex.filter((e) => e.type === 'dictation');
+      assert.equal(dict.length, 1, tag);
+      assert.ok(ids.includes(dict[0].item), tag);
+      assert.notEqual(dict[0].item, ex[ex.length - 1].item, `${tag}: dictation and sentence builder use different sentences`);
 
       const matches = ex.filter((e) => e.type === 'match');
       assert.equal(matches.length, 1, tag);
@@ -1307,4 +1316,119 @@ test('frenchSound: silent endings, soft g, and contrasts that must stay distinct
   assert.equal(k('parler'), k('parlez'), '-er / -ez sound alike');
   assert.equal(k('parler'), k('parlé'));
   assert.equal(k('vert'), k('verre'), 'existing homophones kept');
+});
+
+// ---------------------------------------------------------------- gender (le / la)
+test('genderOf reads the article, or the note for l\' nouns', () => {
+  assert.equal(Core.genderOf({ fr: 'le chat' }), 'm');
+  assert.equal(Core.genderOf({ fr: 'la pomme' }), 'f');
+  assert.equal(Core.genderOf({ fr: "l'eau", note: "feminine: l'eau (f)" }), 'f');
+  assert.equal(Core.genderOf({ fr: "l'oiseau", note: 'masculine; plural: les oiseaux' }), 'm');
+  assert.equal(Core.genderOf({ fr: "l'école", note: 'feminine' }), 'f');
+  assert.equal(Core.genderOf({ fr: "l'argent comptant" }), null);
+  assert.equal(Core.genderOf({ fr: 'bonjour' }), null);
+  assert.equal(Core.genderOf({ fr: 'les yeux' }), null);
+  assert.equal(Core.bareNoun('le chat'), 'chat');
+  assert.equal(Core.bareNoun("l'œuf"), 'œuf');
+  assert.equal(Core.bareNoun('la grand-mère'), 'grand-mère');
+});
+
+test('buildLesson: gender sort has 4 distinct nouns of both genders from the unit', () => {
+  let units = 0;
+  for (const unit of DATA.units) {
+    for (const seed of [1, 2, 3, 42, 777]) {
+      const g = Core.buildLesson(DATA, unit.id, Core.mulberry32(seed)).filter((e) => e.type === 'gender');
+      const nouns = unit.items.filter((it) => Core.genderOf(it));
+      const eligible = nouns.some((it) => Core.genderOf(it) === 'm') && nouns.some((it) => Core.genderOf(it) === 'f') && nouns.length >= 4;
+      assert.equal(g.length, eligible ? 1 : 0, `${unit.id} seed ${seed}`);
+      if (!g.length) continue;
+      if (seed === 1) units++;
+      const items = g[0].pairs.map((id) => unit.items.find((it) => it.id === id));
+      assert.equal(new Set(g[0].pairs).size, 4);
+      assert.ok(items.every(Boolean), 'nouns from this unit');
+      const gs = items.map(Core.genderOf);
+      assert.ok(gs.includes('m') && gs.includes('f'), 'both genders');
+    }
+  }
+  assert.ok(units >= 4, `gender sort appears in several units (${units})`);
+});
+
+// ---------------------------------------------------------------- dictation
+test('checkDictation: exact, accent-only and wrong, ignoring case and punctuation', () => {
+  assert.equal(Core.checkDictation('bonjour madame', 'Bonjour, madame !').result, 'exact');
+  assert.equal(Core.checkDictation("je bois de l' eau", "Je bois de l'eau.").result, 'exact');
+  assert.equal(Core.checkDictation("l'ecole est fermee", "L'école est fermée.").result, 'accent');
+  assert.equal(Core.checkDictation('', 'Le chat dort.').result, 'wrong');
+  assert.equal(Core.checkDictation('le chien dort', 'Le chat dort.').result, 'wrong');
+  assert.equal(Core.checkDictation('le chat dort bien', 'Le chat dort.').result, 'wrong');
+});
+
+test('checkDictation marks each target word, aligned past a missing word', () => {
+  const r = Core.checkDictation('je mange pomme', 'Je mange une pomme.');
+  assert.deepEqual(r.words.map((w) => w.mark), ['ok', 'ok', 'miss', 'ok']);
+  assert.deepEqual(r.words.map((w) => w.w), ['Je', 'mange', 'une', 'pomme.']);
+  const a = Core.checkDictation("l'ecole est fermée", "L'école est fermée.");
+  assert.deepEqual(a.words.map((w) => w.mark), ['accent', 'ok', 'ok']);
+});
+
+// ---------------------------------------------------------------- find the mistake
+test('buildLesson: grammar units get 2 spot-the-mistake sentences with a wrong option', () => {
+  for (const u of DATA.units.filter((x) => x.grammar)) {
+    for (const seed of [1, 5, 9]) {
+      const ex = Core.buildLesson(DATA, u.id, Core.mulberry32(seed));
+      const fills = new Set(ex.filter((e) => e.type === 'fill').map((e) => e.drill));
+      for (const s of ex.filter((e) => e.type === 'spot')) {
+        const d = u.grammar.drills[s.drill];
+        assert.ok(!fills.has(s.drill), `${u.id}: spot drill not also a fill drill`);
+        assert.notEqual(s.wrong, d[1], `${u.id}: shown form is wrong`);
+        assert.ok(d[2].includes(s.wrong), `${u.id}: wrong form is one of the options`);
+        assert.ok(Core.spotDrill(d));
+      }
+    }
+  }
+  assert.equal(Core.spotDrill(['17 = ___', 'dix-sept', []]), false);
+});
+
+test('spotSegments puts the wrong form in place of the blank', () => {
+  const segs = Core.spotSegments(['Ils ___ à Vancouver.', 'vont', ['vont', 'va']], 'va');
+  assert.deepEqual(segs, [{ text: 'Ils', wrong: false, punct: false }, { text: 'va', wrong: true, punct: false }, { text: 'à', wrong: false, punct: false }, { text: 'Vancouver.', wrong: false, punct: false }]);
+  assert.deepEqual(Core.spotSegments(['___ amie.', 'Mon', []], 'Ma').map((s) => s.text), ['Ma', 'amie.']);
+  assert.deepEqual(Core.spotSegments(['Vous ___ bien ?', 'allez', []], 'vont').map((s) => s.punct), [false, false, false, true]);
+});
+
+// ---------------------------------------------------------------- role-play
+test('roleplayTurns: one turn per line of the role, right answer among distinct options', () => {
+  for (const u of DATA.units.filter((x) => x.dialogue)) {
+    const lines = u.dialogue.lines;
+    for (const seed of [1, 2, 3]) {
+      const turns = Core.roleplayTurns(u.dialogue, 'B', Core.mulberry32(seed));
+      assert.deepEqual(turns.map((t) => t.line), lines.map((l, k) => k).filter((k) => lines[k][0] === 'B'));
+      for (const t of turns) {
+        assert.ok(t.options.includes(t.line), `${u.id}: answer present`);
+        assert.ok(t.options.length >= 2 && t.options.length <= 3, `${u.id}: 2–3 options`);
+        assert.equal(new Set(t.options.map((k) => lines[k][1])).size, t.options.length, `${u.id}: distinct texts`);
+        assert.ok(t.options.every((k) => lines[k][0] === 'B'), `${u.id}: options are your own lines`);
+        if (t.prompt !== null) { assert.equal(t.prompt, t.line - 1); assert.equal(lines[t.prompt][0], 'A'); }
+      }
+    }
+  }
+});
+
+test('checkDictation: a wrong accent that changes the word is a mistake', () => {
+  assert.equal(Core.checkDictation('il à faim', 'Il a faim.').result, 'wrong');
+  assert.equal(Core.checkDictation('ou est la gare', 'Où est la gare ?').result, 'wrong');
+  assert.equal(Core.checkDictation('le chat est la', 'Le chat est là.').result, 'wrong');
+  assert.equal(Core.checkDictation('le cafe est chaud', 'Le café est chaud.').result, 'accent');
+});
+
+test('spotSegments: bracketed hints are shown but not pickable; notSpot forms never shown as the mistake', () => {
+  const segs = Core.spotSegments(['Il est ___. (7 h 30)', 'x', []], 'sept heures');
+  assert.deepEqual(segs.filter((sg) => !sg.punct).map((sg) => sg.text), ['Il', 'est', 'sept heures']);
+  for (const u of DATA.units.filter((x) => x.grammar && x.grammar.notSpot)) {
+    for (let seed = 1; seed < 200; seed++) {
+      for (const sp of Core.buildLesson(DATA, u.id, Core.mulberry32(seed)).filter((e) => e.type === 'spot')) {
+        assert.ok(!(u.grammar.notSpot[sp.drill] || []).includes(sp.wrong), `${u.id} drill ${sp.drill}: ${sp.wrong}`);
+      }
+    }
+  }
 });

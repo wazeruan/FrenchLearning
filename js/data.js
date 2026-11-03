@@ -259,6 +259,7 @@
           examples: [['Il est petit.', 'He is small.'], ['Elle est petite.', 'She is small.']] },
         { h: 'Where to put it', p: 'Most adjectives go after the noun: une voiture rouge. A few short, common ones go before: grand, petit, beau, nouveau, bon, jeune, vieux — un petit appartement.' },
       ],
+      notSpot: { 5: ['rousse'] }, // grammatical here too, so never shown as "the mistake"
       drills: [
         ['Elle est ___.', 'contente', ['contente', 'content', 'contents'], 'She is happy.'],
         ['Ils sont ___.', 'fatigués', ['fatigués', 'fatigué', 'fatiguée'], 'They are tired.'],
@@ -395,6 +396,7 @@
           examples: [["Il n'a pas d'enfants.", 'He has no children.']] },
         { h: 'Other negations', table: [['ne … jamais', 'never'], ['ne … plus', 'no longer, not anymore'], ['ne … rien', 'nothing'], ['ne … personne', 'nobody']] },
       ],
+      notSpot: { 3: ['une', 'la'], 4: ['des', 'les'], 7: ['jamais'], 9: ['facilement'] }, // grammatical here too, so never shown as "the mistake"
       drills: [
         ['Je ___ parle pas russe.', 'ne', ['ne', "n'", 'pas'], "I don't speak Russian."],
         ['Elle ___ habite pas à Toronto.', "n'", ["n'", 'ne', 'pas'], "She doesn't live in Toronto."],
@@ -465,6 +467,7 @@
         { h: 'Quel', p: 'Quel (which / what) agrees with its noun: quel jour, quelle heure, quels documents, quelles questions. You\'ll see it on every form.',
           examples: [['Quel est votre nom ?', 'What is your name?'], ['Quelle est votre adresse ?', 'What is your address?']] },
       ],
+      notSpot: { 9: ['Est-ce que'] }, // grammatical here too, so never shown as "the mistake"
       drills: [
         ['___ est la banque ? — À côté de la poste.', 'Où', ['Où', 'Quand', 'Qui'], 'Where is the bank? — Next to the post office.'],
         ['___ coûte le billet ? — Dix dollars.', 'Combien', ['Combien', 'Comment', 'Où'], 'How much is the ticket? — Ten dollars.'],
@@ -534,6 +537,7 @@
         { h: 'Quarters and halves', table: [['et quart', 'quarter past (:15)'], ['et demie', 'half past (:30)'], ['moins le quart', 'quarter to (:45)'], ['moins dix', 'ten to (:50)'], ['midi / minuit', 'noon / midnight']] },
         { h: 'The 24-hour clock', p: 'Schedules use 0–23 h with plain minutes: 14 h 15 = quatorze heures quinze, 20 h 45 = vingt heures quarante-cinq. In conversation people also say deux heures de l\'après-midi, huit heures du soir.' },
       ],
+      notSpot: { 3: ['minuit'] }, // grammatical here too, so never shown as "the mistake"
       drills: [
         ['Il est ___. (7 h 30)', 'sept heures et demie', ['sept heures et demie', 'sept heures et quart', 'sept heures moins le quart'], "It's half past seven."],
         ['Il est ___. (10 h 15)', 'dix heures et quart', ['dix heures et quart', 'dix heures moins le quart', 'dix heures et demie'], "It's a quarter past ten."],

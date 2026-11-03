@@ -356,7 +356,8 @@
     // Free the previous recording once the widget leaves the page.
     const cleanup = new MutationObserver(() => { if (!el.isConnected) { if (voiceUrl) URL.revokeObjectURL(voiceUrl); cleanup.disconnect(); } });
     cleanup.observe(document.getElementById('view'), { childList: true });
-    const unit = D.units.find((u) => u.items.some((x) => x.id === it.id));
+    // Example sentences (<id>-ex) and dialogue lines (<unit>-l<n>) use their unit's words as the hint too.
+    const unit = D.units.find((u) => u.items.some((x) => x.id === it.id || `${x.id}-ex` === it.id)) || unitById(it.id.split('-')[0]);
     const hint = unit ? unit.items.map((x) => x.fr).join(', ') + '.' : '';
 
     mic.onclick = async () => {
@@ -513,7 +514,7 @@
     Mic.close(); // the mic only stays open while you stay on a speaking screen
     session = null;
     const [name, arg] = location.hash.replace(/^#\/?/, '').split('/');
-    const routes = { '': home, unit: unitIntro, learn, grammar: grammarLesson, dialogue: dialogueView, practice: startPractice, review, progress, settings };
+    const routes = { '': home, unit: unitIntro, learn, grammar: grammarLesson, dialogue: dialogueView, roleplay: roleplayView, practice: startPractice, review, progress, settings };
     const fn = routes[name] || home;
     try { fn(arg); }
     catch (err) {
@@ -691,7 +692,7 @@
     const learnStep = { route: 'learn', label: u.kind === 'grammar' ? '📖 Learn the forms' : u.kind === 'dialogue' ? '📖 Key phrases' : '📖 Learn the words' };
     const practice = { route: 'practice', label: '✏️ Practice' };
     if (u.kind === 'grammar') return [learnStep, { route: 'grammar', label: '📘 Grammar lesson' }, practice];
-    if (u.kind === 'dialogue') return [{ route: 'dialogue', label: '🎧 Listen to the dialogue' }, learnStep, practice];
+    if (u.kind === 'dialogue') return [{ route: 'dialogue', label: '🎧 Listen to the dialogue' }, learnStep, { route: 'roleplay', label: '🎭 Role-play' }, practice];
     return [learnStep, practice];
   }
   function nextStep(u, route) {
@@ -848,6 +849,109 @@
       $('#show-text').checked = true; lines.classList.remove('hide-text');
     }
   }
+  // ---------- role-play (dialogue, your turn) ----------
+  // You take one part of the dialogue: hear the other person, choose what you say (then say it aloud
+  // when speaking practice is on). Counts as listening practice: 2 XP + 1 per reply right first time.
+  function roleplayView(id) {
+    const u = unitById(id);
+    if (!u || !u.dialogue || !C.unitUnlocked(state, D, D.units.indexOf(u))) return go('#/');
+    renderChrome('session');
+    const dlg = u.dialogue;
+    const after = nextStep(u, 'roleplay');
+    const started = Date.now();
+    const role = 'B', other = 'A';
+    const me = dlg.speakers[role][0], them = dlg.speakers[other][0];
+    const turns = C.roleplayTurns(dlg, role);
+    const clip = (k) => `${u.id}-l${k + 1}`;
+    view.innerHTML = `
+      <div class="session-head">
+        <a class="icon-btn" href="#/unit/${u.id}" aria-label="Close">${ICON.close}</a>
+        <h2 class="session-title">🎭 ${esc(u.title)}</h2>
+      </div>
+      <section class="card dialogue">
+        <p class="scene">${esc(dlg.scene)}</p>
+        <p>You are <b>${esc(me)}</b>. Listen to ${esc(them)}, then choose what you say.</p>
+        <div class="dlg-controls"><label class="toggle-chip"><input type="checkbox" id="rp-text" checked> Show text</label>
+          <label class="toggle-chip"><input type="checkbox" id="rp-en"> English</label></div>
+        <ol class="lines hide-en" id="rp-lines"></ol>
+        <div class="rp-turn" id="rp-turn"></div>
+      </section>`;
+    const lines = $('#rp-lines'), turnBox = $('#rp-turn');
+    $('#rp-text').onchange = (e) => lines.classList.toggle('hide-text', !e.target.checked);
+    $('#rp-en').onchange = (e) => lines.classList.toggle('hide-en', !e.target.checked);
+    const addLine = (k) => {
+      const [who, f, e] = dlg.lines[k];
+      const li = document.createElement('li');
+      li.className = `line ${who === 'A' ? 'a' : 'b'}`;
+      li.innerHTML = `${speakerBtn(clip(k), `Play line ${k + 1}`)}<div><small class="who">${esc(who === role ? `${me} (you)` : them)}</small><p class="l-fr" lang="fr">${fr(f)}</p><p class="l-en">${esc(e)}</p></div>`;
+      lines.appendChild(li);
+      li.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+      return li;
+    };
+    let k = 0, t = 0, correct = 0;
+    const alive = () => lines.isConnected;
+    // Plays the other person's lines until it's your turn (or the end).
+    async function advance() {
+      turnBox.innerHTML = '';
+      while (k < dlg.lines.length && dlg.lines[k][0] !== role) {
+        const li = addLine(k);
+        li.classList.add('now');
+        await playClip(clip(k));
+        if (!alive()) return;
+        li.classList.remove('now');
+        await new Promise((r) => later(r, 250));
+        k++;
+      }
+      if (k >= dlg.lines.length) return finish();
+      yourTurn(turns[t]);
+    }
+    function yourTurn(turn) {
+      let first = true;
+      turnBox.innerHTML = `<p class="q-fr">Your turn — what do you say?</p>
+        <div class="q-opts">${turn.options.map((o, n) => `<button class="option small" lang="fr" data-o="${o}"><kbd>${n + 1}</kbd><span>${fr(dlg.lines[o][1])}</span></button>`).join('')}</div>`;
+      const opts = $$('.option', turnBox);
+      const choose = (b) => {
+        if (b.disabled) return;
+        const ok = Number(b.dataset.o) === turn.line;
+        Sound.sfx(ok ? 'good' : 'bad');
+        if (!ok) {
+          first = false;
+          b.classList.add('wrong'); b.disabled = true;
+          return;
+        }
+        if (first) correct++;
+        keyHandler = null;
+        b.classList.add('right');
+        opts.forEach((x) => (x.disabled = true));
+        addLine(turn.line);
+        playClip(clip(turn.line));
+        const said = { id: clip(turn.line), fr: dlg.lines[turn.line][1] };
+        const done = () => { if (t !== turns.indexOf(turn)) return; keyHandler = null; k = turn.line + 1; t++; advance(); };
+        turnBox.innerHTML = `${first ? '' : '<p class="muted small">Not quite the first time — this one fits the conversation.</p>'}
+          ${Speech.enabled() ? `<p class="muted small why">Now say it aloud, as ${esc(me)} would.</p>${speakWidget(said)}` : ''}
+          <div class="row center-row"><button class="btn primary" id="rp-next">Continue →</button></div>`;
+        if (Speech.enabled()) bindSpeak($('[data-speak]', turnBox), said);
+        $('#rp-next').onclick = done;
+        keyHandler = (e) => { if (e.key === 'Enter') { e.preventDefault(); done(); } };
+      };
+      opts.forEach((b) => (b.onclick = () => choose(b)));
+      keyHandler = (e) => { const n = Number(e.key); if (n >= 1 && n <= opts.length) choose(opts[n - 1]); };
+    }
+    function finish() {
+      keyHandler = null;
+      const res = C.completeListening(state, D, { correct, total: turns.length }, new Date(), (Date.now() - started) / 60000);
+      save();
+      renderChrome('session');
+      res.achievements.forEach((a) => toast(a.icon, `Achievement: ${a.title}`, a.desc));
+      res.milestones.forEach((m) => toast('🏆', `Milestone: ${m.title}`, m.en));
+      if (res.goalReachedNow) { toast('🎯', 'Objectif du jour atteint !', `Daily goal reached — ${C.currentStreak(state)}-day streak.`); confetti(); Sound.sfx('win'); }
+      turnBox.innerHTML = `<div class="celebrate"><span class="celebrate-i">${correct === turns.length ? '🎉' : '🎭'}</span>
+        <div><b>${correct} / ${turns.length} replies right first time · +${res.xp} XP</b><small>Next time, turn off “Show text” and follow ${esc(them)} by ear.</small></div></div>
+        <div class="row center-row"><a class="btn secondary" href="#/roleplay/${u.id}">Play again</a><a class="btn primary" href="#/${after.route}/${u.id}">${after.label} →</a></div>`;
+    }
+    if (Speech.enabled()) Speech.load().catch(() => {});
+    later(advance, 300);
+  }
   // Plays one clip and resolves when it ends (or fails / is stopped).
   function playClip(id) {
     return new Promise((resolve) => {
@@ -888,10 +992,11 @@
     if (!u || !C.unitUnlocked(state, D, D.units.indexOf(u))) return go('#/');
     const queue = C.buildLesson(D, u.id);
     if (Speech.enabled()) {
-      // Two "say it" exercises per lesson: practice only, never counted against your score.
+      // Two speaking steps per lesson: say a word, then shadow a whole sentence (repeat it right after Coco).
+      // Practice only, never counted against your score.
       const [a, b] = C.shuffle(u.items).slice(0, 2);
       queue.splice(Math.min(3, queue.length), 0, { type: 'speak', item: a.id });
-      queue.splice(Math.min(9, queue.length), 0, { type: 'speak', item: b.id });
+      queue.splice(Math.min(9, queue.length), 0, { type: 'shadow', item: b.id });
       Speech.load().catch(() => {}); // warm up the recognizer in the background
     }
     runSession({ kind: 'lesson', unit: u, queue });
@@ -954,7 +1059,8 @@
       <section class="exercise" id="ex"></section>
       <div class="feedback" id="fb" role="status" aria-live="polite" hidden></div>
       <div class="session-foot" id="foot"><button class="btn primary wide" id="check" disabled>Check</button></div>`;
-    const renderers = { fill: exFill, speak: exSpeak, 'mc-fr-en': exMC, 'mc-en-fr': exMC, listen: exMC, type: exType, match: exMatch, order: exOrder };
+    const renderers = { fill: exFill, speak: exSpeak, shadow: exSpeak, 'mc-fr-en': exMC, 'mc-en-fr': exMC, listen: exMC, type: exType, match: exMatch, order: exOrder,
+      dictation: exDictation, gender: exGender, spot: exSpot };
     renderers[ex.type](ex);
   }
 
@@ -974,7 +1080,8 @@
     let detail = '';
     if (info.hint) detail += `<p class="hint">${info.hint}</p>`;
     if (info.detail) detail += info.detail;
-    if (item && ex.type === 'order') detail += `<div class="fb-answer">${speakerBtn(item.id + '-ex')}<div><b lang="fr">${fr(item.ex.fr)}</b><small>${esc(item.ex.en)}</small></div></div>`;
+    const sentence = ex.type === 'order' || ex.type === 'dictation';
+    if (item && sentence) detail += `<div class="fb-answer">${speakerBtn(item.id + '-ex')}<div><b lang="fr">${fr(item.ex.fr)}</b><small>${esc(item.ex.en)}</small></div></div>`;
     else if (item) detail += `<div class="fb-answer">${speakerBtn(item.id)}<div><b lang="fr">${fr(item.fr)}</b><small>${esc(item.en)}</small></div></div>`;
     fb.className = `feedback ${correct ? 'good' : 'bad'}`;
     fb.innerHTML = `<h3>${correct ? ICON.check : '✗'} ${title}</h3>${correct || info.hint ? '' : '<p class="hint">Correct answer:</p>'}${detail}`;
@@ -985,7 +1092,7 @@
     keyHandler = (e) => { if (e.key === 'Enter') { e.preventDefault(); nextExercise(); } };
     if (info.audio && state.settings.autoplay) later(() => Sound.play(info.audio, itemText(info.audio)), 350);
     if (item && state.settings.autoplay) {
-      later(() => (ex.type === 'order' ? Sound.play(item.id + '-ex', item.ex.fr) : Sound.play(item.id, item.fr)), 350);
+      later(() => (sentence ? Sound.play(item.id + '-ex', item.ex.fr) : Sound.play(item.id, item.fr)), 350);
     }
   }
 
@@ -1212,12 +1319,17 @@
     };
   }
 
+  // 'speak': say a word. 'shadow': listen to the example sentence and repeat it straight after Coco,
+  // copying the rhythm and linking (shadowing).
   function exSpeak(ex) {
     if (!Speech.enabled()) { session.done++; return nextExercise(); }
-    const it = C.findItem(D, ex.item);
+    const word = C.findItem(D, ex.item);
+    const shadow = ex.type === 'shadow';
+    const it = shadow ? { id: `${word.id}-ex`, fr: word.ex.fr, en: word.ex.en } : word;
     $('#ex').innerHTML = `
-      <p class="instr">Say it out loud</p>
-      <div class="prompt-pic">${imgHtml(it, 'lg')}<div><b class="say-fr" lang="fr">${fr(it.fr)}</b><small class="muted">${esc(it.en)}</small></div>${speakerBtn(it.id, 'Hear Coco say it')}</div>
+      <p class="instr">${shadow ? 'Shadowing: listen, then say the whole sentence' : 'Say it out loud'}</p>
+      ${shadow ? '<p class="muted small why">Copy Coco\'s rhythm and how the words run together — say it right after listening.</p>' : ''}
+      <div class="prompt-pic">${imgHtml(word, shadow ? 'md' : 'lg')}<div><b class="say-fr" lang="fr">${fr(it.fr)}</b><small class="muted">${esc(it.en)}</small></div>${speakerBtn(it.id, 'Hear Coco say it')}</div>
       ${speakWidget(it)}`;
     $('#foot').innerHTML = `<button class="btn secondary" id="skip">Skip</button><button class="btn primary" id="continue" disabled>Continue</button>`;
     const next = () => { session.done++; nextExercise(); };
@@ -1225,7 +1337,7 @@
     $('#continue').onclick = next;
     bindSpeak($('[data-speak]'), it, () => { $('#continue').disabled = false; });
     keyHandler = (e) => { if (e.key === 'Enter' && !$('#continue').disabled) { e.preventDefault(); next(); } };
-    if (state.settings.autoplay) later(() => Sound.play(it.id, it.fr), 250);
+    if (state.settings.autoplay || shadow) later(() => Sound.play(it.id, it.fr), 250);
   }
 
   function exMatch(ex) {
@@ -1267,12 +1379,16 @@
     keyHandler = null;
   }
 
+  // Builds the example sentence from word tiles: from its English ('order') or from hearing it ('dictation').
   function exOrder(ex) {
     const it = C.findItem(D, ex.item);
     const target = C.tokenize(it.ex.fr);
-    $('#ex').innerHTML = `
+    const listen = ex.type === 'dictation';
+    $('#ex').innerHTML = `${listen ? `
+      <p class="instr">Dictée: listen and build what you hear</p>
+      ${dictationPrompt(it)}` : `
       <p class="instr">Build the sentence in French</p>
-      <div class="prompt-pic small">${imgHtml(it, 'md')}<b>${esc(it.ex.en)}</b></div>
+      <div class="prompt-pic small">${imgHtml(it, 'md')}<b>${esc(it.ex.en)}</b></div>`}
       <div class="answer-line" id="line" lang="fr" aria-label="Your sentence"></div>
       <div class="bank" id="bank" lang="fr">${ex.tiles.map((w, k) => `<button class="word" data-k="${k}">${fr(w)}</button>`).join('')}</div>`;
     const line = $('#line'), bank = $('#bank');
@@ -1296,6 +1412,120 @@
     };
     $('#check').onclick = check;
     keyHandler = (e) => { if (e.key === 'Enter' && line.children.length) { e.preventDefault(); check(); } };
+    if (listen && state.settings.autoplay) later(() => Sound.play(`${it.id}-ex`, it.ex.fr), 250);
+  }
+
+  // ---------- dictation (dictée) ----------
+  const dictationPrompt = (it) => `
+      <div class="listen-row">${speakerBtn(`${it.id}-ex`, 'Play the sentence', 'huge')}<button class="speaker slow" data-audio="${it.id}-ex" data-slow="1" aria-label="Play slowly">${ICON.turtle}</button></div>`;
+  // Listen to an example sentence and write it down. With letter tiles (or typing off) it is built from
+  // word tiles; with the keyboard it is typed, and each word is marked right, accent-only or missing.
+  function exDictation(ex) {
+    const it = C.findItem(D, ex.item);
+    if (state.settings.typing !== 'keyboard') {
+      ex.tiles = ex.tiles || C.shuffle(C.tokenize(it.ex.fr));
+      return exOrder(ex);
+    }
+    $('#ex').innerHTML = `
+      <p class="instr">Dictée: write what you hear</p>
+      <p class="muted small why">Capitals and punctuation don't count; accents do.</p>
+      ${dictationPrompt(it)}
+      <input type="text" id="answer" lang="fr" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Écrivez la phrase…" aria-label="The sentence you heard">
+      <div class="accents">${ACCENTS.map((a) => `<button type="button" data-ch="${a}">${a}</button>`).join('')}</div>`;
+    const input = $('#answer');
+    input.focus();
+    input.oninput = () => { $('#check').disabled = !input.value.trim(); };
+    $$('.accents button').forEach((b) => (b.onmousedown = (e) => e.preventDefault()));
+    $$('.accents button[data-ch]').forEach((b) => (b.onclick = () => {
+      input.setRangeText(b.dataset.ch, input.selectionStart, input.selectionEnd, 'end');
+      input.dispatchEvent(new Event('input'));
+      input.focus();
+    }));
+    const check = () => {
+      if (!input.value.trim() || input.disabled) return;
+      const res = C.checkDictation(input.value, it.ex.fr);
+      input.disabled = true;
+      $$('.accents button').forEach((b) => (b.disabled = true));
+      input.classList.add(res.result === 'wrong' ? 'wrong' : 'right');
+      const marks = `<p class="dict-marks" lang="fr">${res.words.map((w) => `<span class="${w.mark}">${fr(w.w)}</span>`).join(' ')}</p>`;
+      const hint = res.result === 'accent' ? 'Right words — watch the accents!' : res.result === 'wrong' ? 'Underlined words were missing or misspelled:' : '';
+      answered(ex, res.result !== 'wrong', { hint, detail: res.result === 'exact' ? '' : marks });
+    };
+    $('#check').onclick = check;
+    keyHandler = (e) => { if (e.key === 'Enter' && (e.target === input || e.target === document.body)) { e.preventDefault(); check(); } };
+    if (state.settings.autoplay) later(() => Sound.play(`${it.id}-ex`, it.ex.fr), 250);
+  }
+
+  // ---------- le or la? (noun gender) ----------
+  // Four nouns without their article; choose le or la for each. Colours stay the same everywhere
+  // (blue = masculine, red = feminine) so gender is remembered as part of the word.
+  function exGender(ex) {
+    const items = ex.pairs.map((id) => C.findItem(D, id));
+    const choice = {};
+    $('#ex').innerHTML = `
+      <p class="instr">Le or la?</p>
+      <p class="muted small why">Learn each noun with its gender — « l' » hides it, so those count too.</p>
+      <ol class="gender-list">${items.map((it) => `
+        <li data-id="${it.id}">${imgHtml(it, 'xs')}<b lang="fr">${fr(C.bareNoun(it.fr))}</b><small>${esc(it.en.replace(/^the /, ''))}</small>
+          <span class="gender-btns"><button type="button" class="g-btn g-m" data-g="m" lang="fr">le</button><button type="button" class="g-btn g-f" data-g="f" lang="fr">la</button></span></li>`).join('')}</ol>`;
+    $$('.g-btn').forEach((b) => (b.onmousedown = (e) => e.preventDefault())); // keep focus off, so Enter checks
+    $$('.gender-list li').forEach((li) => $$('.g-btn', li).forEach((b) => (b.onclick = () => {
+      if (b.disabled) return;
+      choice[li.dataset.id] = b.dataset.g;
+      $$('.g-btn', li).forEach((x) => x.classList.toggle('selected', x === b));
+      Sound.sfx('tap');
+      $('#check').disabled = Object.keys(choice).length < items.length;
+    })));
+    const check = () => {
+      if (Object.keys(choice).length < items.length || $('.g-btn:disabled')) return;
+      let right = 0;
+      for (const li of $$('.gender-list li')) {
+        const g = C.genderOf(C.findItem(D, li.dataset.id));
+        const ok = choice[li.dataset.id] === g;
+        if (ok) right++;
+        li.classList.add(ok ? 'right' : 'wrong');
+        $$('.g-btn', li).forEach((b) => { b.disabled = true; if (b.dataset.g === g) b.classList.add('answer'); });
+      }
+      const list = `<ul class="gender-answers" lang="fr">${items.map((it) => `<li class="g-${C.genderOf(it)}">${speakerBtn(it.id)}<b>${fr(it.fr)}</b><small lang="en">${C.genderOf(it) === 'm' ? 'masculine · un' : 'feminine · une'}</small></li>`).join('')}</ul>`;
+      answered(ex, right === items.length, { hint: right === items.length ? '' : `${right} of ${items.length} right. Say them with their article:`, detail: list });
+    };
+    $('#check').onclick = check;
+    keyHandler = (e) => { if (e.key === 'Enter' && !$('#check').disabled) { e.preventDefault(); check(); } };
+  }
+
+  // ---------- find the mistake ----------
+  // A drill sentence with one wrong form; spot it, then see the corrected sentence (noticing).
+  function exSpot(ex) {
+    const u = unitById(ex.unit);
+    const drill = u.grammar.drills[ex.drill];
+    const [q, answer, , en] = drill;
+    const audio = `${u.id}-d${ex.drill + 1}`;
+    const segs = C.spotSegments(drill, ex.wrong);
+    $('#ex').innerHTML = `
+      <p class="instr">Find the mistake</p>
+      <p class="muted small why">One word is wrong. ${CLICK} it.</p>
+      <div class="spot-sentence" lang="fr">${segs.map((sg, k) => (sg.punct ? `<span class="spot-punct">${esc(sg.text)}</span>` : `<button type="button" class="spot-word" data-k="${k}">${fr(sg.text)}</button>`)).join(' ')}</div>
+      <p class="fill-en">${esc(en)}</p>`;
+    let chosen = null;
+    $$('.spot-word').forEach((b) => (b.onmousedown = (e) => e.preventDefault())); // keep focus off, so Enter checks
+    $$('.spot-word').forEach((b) => (b.onclick = () => {
+      if (b.disabled) return;
+      chosen = Number(b.dataset.k);
+      $$('.spot-word').forEach((x) => x.classList.toggle('selected', x === b));
+      $('#check').disabled = false;
+      Sound.sfx('tap');
+    }));
+    const check = () => {
+      if (chosen === null || $('.spot-word:disabled')) return;
+      const k = segs.findIndex((sg) => sg.wrong);
+      const ok = chosen === k;
+      $$('.spot-word').forEach((b) => { const n = Number(b.dataset.k); b.disabled = true; if (n === k) b.classList.add('wrong-form'); else if (n === chosen) b.classList.add('wrong'); });
+      $(`.spot-word[data-k="${k}"]`).innerHTML = `<s>${fr(ex.wrong)}</s> ${fr(answer)}`;
+      answered(ex, ok, { audio, hint: ok ? `« ${esc(ex.wrong)} » → « ${esc(answer)} »` : `The mistake was « ${esc(ex.wrong)} » — it should be « ${esc(answer)} ».`,
+        detail: `<div class="fb-answer">${speakerBtn(audio)}<div><b lang="fr">${fr(C.drillSpeech([q, answer]))}</b><small>${esc(en)}</small></div></div>` });
+    };
+    $('#check').onclick = check;
+    keyHandler = (e) => { if (e.key === 'Enter' && chosen !== null) { e.preventDefault(); check(); } };
   }
 
   function finishSession() {

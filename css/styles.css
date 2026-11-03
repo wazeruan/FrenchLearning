@@ -589,6 +589,42 @@ label.btn { cursor: pointer; }
 .option.small { min-height: 48px; font-size: 1rem; }
 .center-row { justify-content: center; }
 
+/* ---------- more practice types: dictation, le/la, find the mistake ---------- */
+.why { margin: -10px 0 14px; }
+.dict-marks { font-family: var(--serif); font-size: 1.2rem; color: var(--ink); margin: 0 0 10px; }
+.dict-marks .accent { text-decoration: underline wavy #C78A12; text-underline-offset: 4px; }
+.dict-marks .miss { color: var(--red); text-decoration: underline 2px; text-underline-offset: 4px; }
+/* Gender colours, used the same way everywhere: blue = masculine, red = feminine. */
+.g-m { --g: var(--navy); --g-soft: var(--navy-soft); }
+.g-f { --g: var(--red); --g-soft: var(--red-soft); }
+.gender-list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 10px; }
+.gender-list li { display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-radius: 16px; border: 2px solid var(--line); background: var(--surface); }
+.gender-list li b { font-family: var(--serif); font-size: 1.3rem; }
+.gender-list li small { color: var(--muted); }
+.gender-list li.right { border-color: var(--green); }
+.gender-list li.wrong { border-color: var(--red); }
+.gender-btns { margin-left: auto; display: flex; gap: 8px; }
+.g-btn { min-width: 64px; padding: 8px 14px; border-radius: 12px; border: 2px solid var(--g); background: var(--surface); color: var(--g); font: 600 1.1rem var(--serif); box-shadow: 0 2px 0 var(--g); }
+.g-btn.selected { background: var(--g); color: var(--surface); }
+.g-btn:disabled { cursor: default; opacity: .45; }
+.g-btn.answer { opacity: 1; background: var(--g); color: var(--surface); }
+.g-btn.selected:not(.answer):disabled { text-decoration: line-through; }
+.gender-answers { list-style: none; padding: 0; margin: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; color: var(--ink); }
+.gender-answers li { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 12px; background: var(--surface); border-left: 5px solid var(--g); }
+.gender-answers b { display: block; font-family: var(--serif); font-size: 1.15rem; color: var(--g); }
+.gender-answers small { color: var(--muted); }
+.spot-sentence { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0 6px; }
+.spot-word { padding: 8px 12px; border-radius: 12px; border: 2px solid var(--line); background: var(--surface); font-family: var(--serif); font-size: 1.35rem; box-shadow: 0 2px 0 var(--line); }
+.spot-word:hover:not(:disabled) { border-color: color-mix(in srgb, var(--navy) 40%, var(--line)); }
+.spot-word.selected { border-color: var(--navy); background: var(--navy-soft); }
+.spot-word.wrong { border-color: var(--red); background: var(--red-soft); }
+.spot-word.wrong-form { border-color: var(--green); background: var(--green-soft); }
+.spot-word s { color: var(--red); }
+.rp-turn { margin-top: 16px; }
+.rp-turn .q-fr { margin-bottom: 8px; }
+.spot-punct { align-self: center; font-family: var(--serif); font-size: 1.35rem; margin-left: -4px; }
+.spot-word:disabled { cursor: default; color: var(--ink); }
+
 /* Static rendering for the Mac app's --snapshot check (animations don't run in a hidden window). */
 .snapshot *, .snapshot *::before, .snapshot *::after { animation: none !important; transition: none !important; }
 .steps .na a { opacity: .6; }

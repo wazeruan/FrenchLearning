@@ -349,6 +349,11 @@
     const sentence = { type: 'order', item: orderItem.id, tiles: shuffle(tokenize(orderItem.ex.fr), rng) };
     // Put the match game in the middle and the sentence builder at the end.
     const mid = Math.floor(singles.length / 2);
+    // Gender sort (le / la) when the unit has enough nouns, and a dictation of another example sentence.
+    const nouns = genderPick(items, rng);
+    if (nouns) singles.splice(Math.min(singles.length, mid + 2), 0, { type: 'gender', pairs: nouns });
+    const dictItem = items.find((it) => it.id !== orderItem.id);
+    if (dictItem) singles.push({ type: 'dictation', item: dictItem.id });
     const lesson = singles.slice(0, mid).concat([match], singles.slice(mid));
     if (!unit.grammar) return lesson.concat([sentence]);
     // Grammar units: 6 fill-in-the-blank drills, spread through the second half.
@@ -358,7 +363,96 @@
     const out = lesson.slice(0, mid + 1);
     const rest = lesson.slice(mid + 1);
     drills.forEach((d, k) => { out.push(d); if (rest[k]) out.push(rest[k]); });
-    return out.concat(rest.slice(drills.length), [sentence]);
+    // Two "find the mistake" sentences from drills not used above (noticing the wrong form).
+    const used = new Set(drills.map((d) => d.drill));
+    const notSpot = unit.grammar.notSpot || {};
+    const wrongForms = (i) => unit.grammar.drills[i][2].filter((o) => o !== unit.grammar.drills[i][1] && !(notSpot[i] || []).includes(o));
+    const spots = shuffle(unit.grammar.drills.map((d, i) => i).filter((i) => !used.has(i) && spotDrill(unit.grammar.drills[i]) && wrongForms(i).length), rng)
+      .slice(0, 2).map((i) => ({ type: 'spot', unit: unit.id, drill: i, wrong: pickOf(wrongForms(i), rng) }));
+    return out.concat(rest.slice(drills.length), spots, [sentence]);
+  }
+  const pickOf = (arr, rng) => arr[Math.floor(rng() * arr.length)];
+
+  // ---------- gender (le / la) ----------
+  // 'm' | 'f' for a noun shown with its article (or "l'" plus a note saying which), else null.
+  function genderOf(item) {
+    const f = String(item.fr);
+    if (/^le /.test(f)) return 'm';
+    if (/^la /.test(f)) return 'f';
+    if (/^l'/.test(f) && item.note) {
+      if (/^masculine|\(m\)/.test(item.note)) return 'm';
+      if (/^feminine|\(f\)/.test(item.note)) return 'f';
+    }
+    return null;
+  }
+  // The noun without its article: "le chat" → "chat", "l'eau" → "eau".
+  const bareNoun = (fr) => String(fr).replace(/^(?:le |la |l')/, '');
+  // Four nouns with at least one of each gender, or null when the unit doesn't have them.
+  function genderPick(items, rng = Math.random) {
+    const m = shuffle(items.filter((it) => genderOf(it) === 'm'), rng);
+    const f = shuffle(items.filter((it) => genderOf(it) === 'f'), rng);
+    if (!m.length || !f.length || m.length + f.length < 4) return null;
+    const out = [m[0], f[0]].concat(shuffle(m.slice(1).concat(f.slice(1)), rng).slice(0, 2));
+    return shuffle(out, rng).map((it) => it.id);
+  }
+
+  // ---------- dictation ----------
+  // Words of a sentence for comparing a dictation: lower case, no punctuation, "l' eau" → "l'eau".
+  const dictWords = (s) => normalize(s).replace(/'\s+/g, "'").split(' ').filter(Boolean);
+  // Words where the accent changes the meaning: a wrong accent on these is a real mistake.
+  const ACCENT_WORDS = new Set(['a', 'ou', 'la', 'du', 'sur', 'des', 'ca']);
+  // Compares a written dictation with the sentence. Returns { result: 'exact' | 'accent' | 'wrong',
+  // words: [{ w, mark: 'ok' | 'accent' | 'miss' }] } — each word of the target, marked by the longest
+  // common subsequence with what was written (so one missing word doesn't mark the rest wrong).
+  function checkDictation(input, target) {
+    const a = dictWords(input), b = dictWords(target);
+    const key = (w) => stripAccents(w);
+    const L = Array.from({ length: a.length + 1 }, () => new Array(b.length + 1).fill(0));
+    for (let i = a.length - 1; i >= 0; i--) {
+      for (let j = b.length - 1; j >= 0; j--) L[i][j] = key(a[i]) === key(b[j]) ? L[i + 1][j + 1] + 1 : Math.max(L[i + 1][j], L[i][j + 1]);
+    }
+    const marks = b.map(() => 'miss');
+    for (let i = 0, j = 0; i < a.length && j < b.length;) {
+      if (key(a[i]) === key(b[j])) { marks[j] = a[i] === b[j] ? 'ok' : ACCENT_WORDS.has(key(b[j])) ? 'miss' : 'accent'; i++; j++; }
+      else if (L[i + 1][j] >= L[i][j + 1]) i++;
+      else j++;
+    }
+    const tWords = tokenize(target);
+    const words = tWords.length === b.length ? tWords.map((w, k) => ({ w, mark: marks[k] })) : b.map((w, k) => ({ w, mark: marks[k] }));
+    const result = !a.length ? 'wrong' : a.join(' ') === b.join(' ') ? 'exact' : marks.every((m) => m !== 'miss') && a.length === b.length ? 'accent' : 'wrong';
+    return { result, words };
+  }
+
+  // ---------- find the mistake ----------
+  // Drills usable as error-spotting: the blank is part of a sentence (not "17 = ___").
+  const spotDrill = ([sentence]) => !/^\d+ = ___$/.test(sentence);
+  // The drill sentence with a wrong form in the blank, as segments: [{ text, wrong, punct }].
+  // punct segments are shown but can't be picked: standalone punctuation (French puts a space before
+  // ? ! : ;) and hints in brackets such as "(7 h 30)".
+  function spotSegments([sentence], wrong) {
+    const [before, after] = sentence.split('___');
+    let hint = false;
+    const words = (s) => s.split(/\s+/).filter(Boolean).map((text) => {
+      const inHint = hint || text.startsWith('(');
+      hint = inHint && !text.endsWith(')');
+      return { text, wrong: false, punct: inHint || /^[.,!?;:»«]+$/.test(text) };
+    });
+    return words(before).concat([{ text: wrong, wrong: true, punct: false }], words(after));
+  }
+
+  // ---------- dialogue role-play ----------
+  // The learner speaks for one role. Each of their lines becomes a turn: hear the previous line, then
+  // choose the right reply among their other lines. Returns [{ line, prompt, options }] (line indexes).
+  function roleplayTurns(dialogue, role = 'B', rng = Math.random) {
+    const mine = dialogue.lines.map((l, k) => k).filter((k) => dialogue.lines[k][0] === role);
+    return mine.map((k) => {
+      const prompt = k > 0 && dialogue.lines[k - 1][0] !== role ? k - 1 : null;
+      // Distractors: other lines of yours, preferring ones far from this point in the conversation.
+      const others = shuffle(mine.filter((j) => j !== k && Math.abs(j - k) > 2), rng)
+        .concat(shuffle(mine.filter((j) => j !== k && Math.abs(j - k) <= 2), rng))
+        .filter((j) => dialogue.lines[j][1] !== dialogue.lines[k][1]);
+      return { line: k, prompt, options: shuffle([k].concat(others.slice(0, 2)), rng) };
+    });
   }
   // The sentence a learner hears for a drill: blank filled in, hints in brackets removed.
   function drillSpeech([sentence, answer]) {
@@ -509,6 +603,7 @@
     reviewAnswer, dueWords, weakestWords, masteredCount,
     normalize, checkAnswer, tokenize, frenchSound, pronunciationScore, pronunciationLevel, letterSlots, spellingTiles, revealPrefix, asChoice,
     mulberry32, shuffle, allItems, findItem, buildLesson, buildReview,
+    genderOf, bareNoun, genderPick, checkDictation, spotDrill, spotSegments, roleplayTurns,
     completedUnits, unitUnlocked, stageProgress, starsFor, evaluateProgress, completeLesson, completeReview, completeListening, drillSpeech,
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = Core;
