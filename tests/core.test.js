@@ -1491,3 +1491,50 @@ test('buildLesson: one chunks exercise per unit (if it has a sentence to cut), s
   }
   assert.ok(units >= 22, `most units have one (${units})`);
 });
+
+// ---------------------------------------------------------------- checkpoint
+const checkpointOf = (unitId, seed = 1, now = Date.now()) => {
+  const queue = Core.buildLesson(DATA, unitId, Core.mulberry32(seed));
+  return { v: 1, kind: 'lesson', unit: unitId, queue: queue.slice(3), total: queue.length, done: 3,
+    results: [{ item: 'x', type: 'mc-fr-en', correct: true }], elapsed: 60000, savedAt: now };
+};
+
+test('validCheckpoint accepts a saved lesson for every unit, and survives a JSON round trip', () => {
+  for (const u of DATA.units) {
+    for (const seed of [1, 7]) {
+      const cp = JSON.parse(JSON.stringify(checkpointOf(u.id, seed)));
+      assert.ok(Core.validCheckpoint(DATA, cp), `${u.id} seed ${seed}`);
+    }
+  }
+  const review = { v: 1, kind: 'review', queue: Core.buildReview(DATA, ['u01-01', 'u05-02']), total: 2, done: 0, results: [], elapsed: 0, savedAt: Date.now() };
+  assert.ok(Core.validCheckpoint(DATA, review));
+});
+
+test('validCheckpoint rejects stale, malformed, or out-of-date checkpoints', () => {
+  const now = Date.now();
+  const ok = () => checkpointOf('g08', 1, now);
+  assert.equal(Core.validCheckpoint(DATA, null), false);
+  assert.equal(Core.validCheckpoint(DATA, Object.assign(ok(), { v: 2 })), false);
+  assert.equal(Core.validCheckpoint(DATA, Object.assign(ok(), { kind: 'quiz' })), false);
+  assert.equal(Core.validCheckpoint(DATA, Object.assign(ok(), { unit: 'zz99' })), false, 'unit removed');
+  assert.equal(Core.validCheckpoint(DATA, Object.assign(ok(), { queue: [] })), true, 'all answered: resume shows the results');
+  assert.equal(Core.validCheckpoint(DATA, Object.assign(ok(), { queue: 'x' })), false);
+  assert.equal(Core.validCheckpoint(DATA, Object.assign(ok(), { done: 99, total: 5 })), false);
+  assert.equal(Core.validCheckpoint(DATA, Object.assign(ok(), { savedAt: now - 8 * 86400000 }), now), false, 'older than 7 days');
+  assert.equal(Core.validCheckpoint(DATA, Object.assign(ok(), { savedAt: now + 3600000 }), now), false, 'from the future');
+  assert.equal(Core.validCheckpoint(DATA, Object.assign(ok(), { results: [{ correct: 'yes' }] })), false);
+  const bad = (ex) => Object.assign(ok(), { queue: [ex] });
+  assert.equal(Core.validCheckpoint(DATA, bad({ type: 'mc-fr-en', item: 'zz-01', options: [] })), false, 'word removed');
+  assert.equal(Core.validCheckpoint(DATA, bad({ type: 'fill', unit: 'g08', drill: 40, options: [] })), false, 'drill removed');
+  assert.equal(Core.validCheckpoint(DATA, bad({ type: 'boom', item: 'u01-01' })), false, 'unknown type');
+  assert.equal(Core.validCheckpoint(DATA, bad({ type: 'match', pairs: ['u01-01', 'nope'] })), false);
+  assert.equal(Core.validCheckpoint(DATA, bad({ type: 'chunks', fr: 'a', en: 'b', audio: 'c', chunks: 'abc' })), false);
+  assert.equal(Core.validCheckpoint(DATA, bad({ type: 'type', item: 'u01-01' })), true);
+  assert.equal(Core.validCheckpoint(DATA, bad({ type: 'mc-fr-en', item: 'u01-01' })), false, 'choice without options');
+  assert.equal(Core.validCheckpoint(DATA, bad({ type: 'dictation', item: 'u01-01', tiles: 'abc' })), false);
+  assert.equal(Core.validCheckpoint(DATA, bad({ type: 'dictation', item: 'u01-01', tiles: ['Bonjour,', 'madame !'] })), true);
+  assert.equal(Core.validCheckpoint(DATA, bad({ type: 'fill', unit: 'g08', drill: 0, options: ['x', 'y'] })), false, 'answer no longer an option');
+  assert.equal(Core.validCheckpoint(DATA, bad({ type: 'spot', unit: 'g08', drill: 0, wrong: 'vais' })), false, 'shown form is the answer');
+  assert.equal(Core.validCheckpoint(DATA, Object.assign(ok(), { total: 1e308, done: 1 })), false);
+  assert.equal(Core.validCheckpoint(DATA, Object.assign(ok(), { elapsed: 1e15 })), false);
+});

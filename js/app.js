@@ -16,6 +16,40 @@
     catch (e) { toast('⚠️', 'Could not save progress', 'Browser storage is unavailable.'); }
   }
 
+  // ---------- checkpoint: the practice or review in progress, so leaving doesn't lose it ----------
+  function savedCheckpoint() {
+    try {
+      const cp = JSON.parse(localStorage.getItem(C.CHECKPOINT_KEY));
+      return C.validCheckpoint(D, cp) ? cp : null;
+    } catch (e) { return null; }
+  }
+  function saveCheckpoint(queue) {
+    try {
+      localStorage.setItem(C.CHECKPOINT_KEY, JSON.stringify({
+        v: 1, kind: session.kind, unit: session.unit ? session.unit.id : null, queue, total: session.total,
+        done: session.done, results: session.results, elapsed: Date.now() - session.started, savedAt: Date.now(),
+      }));
+    } catch (e) { /* storage unavailable: the session just can't be resumed */ }
+  }
+  function clearCheckpoint() { try { localStorage.removeItem(C.CHECKPOINT_KEY); } catch (e) { /* ignore */ } }
+  // "Pick up where you left off" card for the home and review pages.
+  function resumeCard(cp) {
+    if (!cp) return '';
+    const u = cp.kind === 'lesson' ? unitById(cp.unit) : null;
+    const left = cp.queue.length;
+    return `<section class="card resume-card">
+      <span class="resume-i">⏸️</span>
+      <div class="grow"><b>${u ? `Unfinished practice: ${esc(u.title)}` : 'Unfinished review'}</b>
+        <small>${left ? `${left} exercise${left === 1 ? '' : 's'} to go` : 'Only the results are left'} · ${Math.round((cp.done / Math.max(1, cp.total)) * 100)}% done</small></div>
+      <button class="btn danger-ghost" data-discard>Discard</button>
+      <a class="btn primary" href="${u ? `#/practice/${u.id}` : '#/review/resume'}">Continue</a>
+    </section>`;
+  }
+  function bindResumeCard() {
+    const b = $('[data-discard]');
+    if (b) b.onclick = () => { clearCheckpoint(); route(); };
+  }
+
   // ---------- helpers ----------
   const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   // French typography: keep « » ! ? : ; attached with a non-breaking space.
@@ -662,10 +696,12 @@
           ${allDone ? `<a class="btn primary" href="#/review">Practise your words</a>` : `<a class="btn primary" href="#/unit/${next.id}">${state.units[next.id] ? 'Continue' : 'Start'}: ${esc(next.title)}</a>`}
         </div>
       </section>
+      ${resumeCard(savedCheckpoint())}
       ${todayPlan()}
       <h2 class="section-title">Your path to NCLC 7 <small>${C.completedUnits(state, D)} / ${D.units.length} units</small></h2>
       <ol class="path">${path}</ol>
       <p class="muted small center">More stages (A2, exam trainer, B1, B2) are on the way — see ROADMAP.md.</p>`;
+    bindResumeCard();
   }
 
   // ---------- unit intro ----------
@@ -677,6 +713,8 @@
     renderChrome('home');
     const st = state.units[u.id];
     const steps = unitSteps(u);
+    const cp = savedCheckpoint();
+    const resume = cp && cp.kind === 'lesson' && cp.unit === u.id ? cp : null;
     view.innerHTML = `
       <a class="back" href="#/">← Back</a>
       <section class="card unit-intro">
@@ -687,8 +725,17 @@
         ${st ? `<p>${stars(st.stars)} <small class="muted">Best ${Math.round(st.bestScore * 100)}%</small></p>` : ''}
         <div class="tip"><b>💡 Le saviez-vous ?</b><p>${fr(u.tip)}</p></div>
         <ul class="word-chips">${u.items.map((it) => `<li><button data-audio="${it.id}">${imgHtml(it, 'xs')}<span lang="fr">${fr(it.fr)}</span></button></li>`).join('')}</ul>
-        <ol class="unit-steps">${steps.map((sp, k) => `<li><a class="btn ${k === 0 && !st ? 'primary' : 'secondary'}" href="#/${sp.route}/${u.id}">${sp.label}</a></li>`).join('')}</ol>
+        <ol class="unit-steps">${steps.map((sp, k) => (sp.route === 'practice' && resume
+          ? `<li><a class="btn primary" href="#/practice/${u.id}">✏️ ${resume.queue.length ? `Continue practice (${resume.queue.length} left)` : 'See your practice results'}</a></li>`
+          : `<li><a class="btn ${k === 0 && !st && !resume ? 'primary' : 'secondary'}" href="#/${sp.route}/${u.id}">${sp.label}</a></li>`)).join('')}</ol>
+        ${resume ? `<p class="center small"><button type="button" class="link-btn" id="restart">Start the practice over</button></p>` : ''}
       </section>`;
+    bindRestart(u);
+  }
+  // (bound by unitIntro) "Start the practice over" drops the saved checkpoint.
+  function bindRestart(u) {
+    const b = $('#restart');
+    if (b) b.onclick = () => { clearCheckpoint(); go(`#/practice/${u.id}`); };
   }
   // The guided order of a unit: dialogues start by listening; grammar has its lesson after the forms.
   function unitSteps(u) {
@@ -993,6 +1040,11 @@
   function startPractice(id) {
     const u = unitById(id);
     if (!u || !C.unitUnlocked(state, D, D.units.indexOf(u))) return go('#/');
+    const cp = savedCheckpoint();
+    if (cp && cp.kind === 'lesson' && cp.unit === u.id) {
+      if (Speech.enabled()) Speech.load().catch(() => {});
+      return runSession({ kind: 'lesson', unit: u, resume: cp });
+    }
     const queue = C.buildLesson(D, u.id);
     if (Speech.enabled()) {
       // Two speaking steps per lesson: say a word, then shadow a whole sentence (repeat it right after Coco).
@@ -1004,7 +1056,9 @@
     }
     runSession({ kind: 'lesson', unit: u, queue });
   }
-  function review() {
+  function review(arg) {
+    const cp = savedCheckpoint();
+    if (arg === 'resume' && cp && cp.kind === 'review') return runSession({ kind: 'review', resume: cp });
     renderChrome('review');
     const due = C.dueWords(state);
     const learned = Object.keys(state.words).length;
@@ -1034,14 +1088,19 @@
         <div class="boxes">${boxes.map((n, i) => `<div class="box b${i + 1}"><div class="bar"><i style="height:${(n / maxBox) * 100}%"></i></div><b>${n}</b><small>Box ${i + 1}</small></div>`).join('')}</div>
         <p class="small">${learned} words learned · ${mastered} mastered</p>
       </section>`;
+    if (cp && cp.kind === 'review') { $('.review-hero').insertAdjacentHTML('beforebegin', resumeCard(cp)); bindResumeCard(); }
     const start = (ids) => runSession({ kind: 'review', queue: C.buildReview(D, ids) });
     if ($('#go-review')) $('#go-review').onclick = () => start(due.slice(0, 12));
     if ($('#go-weak')) $('#go-weak').onclick = () => start(C.weakestWords(state, 10));
   }
 
-  function runSession({ kind, unit, queue }) {
+  // resume: a saved checkpoint to continue (remaining exercises, score so far, time spent).
+  function runSession({ kind, unit, queue, resume }) {
     renderChrome('session');
-    session = { kind, unit, queue: queue.slice(), total: queue.length, done: 0, results: [], retried: new Set(), started: Date.now() };
+    session = resume
+      ? { kind, unit, queue: resume.queue.slice(), total: resume.total, done: resume.done, results: resume.results.slice(), started: Date.now() - resume.elapsed }
+      : { kind, unit, queue: queue.slice(), total: queue.length, done: 0, results: [], started: Date.now() };
+    if (resume && resume.queue.length) toast('⏯️', 'Picked up where you left off', `${resume.queue.length} exercise${resume.queue.length === 1 ? '' : 's'} to go`);
     nextExercise();
   }
   function closeHref() { return session.kind === 'lesson' ? `#/unit/${session.unit.id}` : '#/review'; }
@@ -1050,6 +1109,9 @@
     Speech.cancel();
     if (!session.queue.length) return finishSession();
     const ex = session.queue.shift();
+    // Leaving now comes back to this exercise. Not before the first answer, so merely opening a
+    // practice doesn't replace another one you left unfinished.
+    if (session.done > 0) saveCheckpoint([ex].concat(session.queue));
     session.current = ex;
     const pct = (session.done / session.total) * 100;
     view.innerHTML = `
@@ -1075,6 +1137,7 @@
       session.total++;
     }
     session.done++;
+    saveCheckpoint(session.queue); // answered: leaving now comes back to the next one
     $('.progress i').style.width = `${(session.done / session.total) * 100}%`;
     Sound.sfx(correct ? 'good' : 'bad');
     const item = ex.item ? C.findItem(D, ex.item) : null;
@@ -1575,6 +1638,7 @@
   }
 
   function finishSession() {
+    clearCheckpoint();
     const s = session;
     const minutes = (Date.now() - s.started) / 60000;
     const res = s.kind === 'lesson'
@@ -1753,12 +1817,12 @@
         const data = JSON.parse(await f.text());
         if (!data || typeof data !== 'object' || !('xp' in data) || !('words' in data)) throw new Error('not a backup');
         if (!confirm('Replace your current progress with this backup?')) return;
-        state = C.migrate(data); save(); applyTheme(); toast('✓', 'Backup imported'); settings();
+        state = C.migrate(data); save(); clearCheckpoint(); applyTheme(); toast('✓', 'Backup imported'); settings();
       } catch (err) { toast('⚠️', 'Import failed', 'That file is not a valid backup.'); }
     };
     $('#reset').onclick = () => {
       if (!confirm('Erase all progress, streaks and achievements? This cannot be undone (export a backup first if unsure).')) return;
-      state = C.defaultState(); save(); applyTheme(); toast('↺', 'Progress reset'); go('#/');
+      state = C.defaultState(); save(); clearCheckpoint(); applyTheme(); toast('↺', 'Progress reset'); go('#/');
     };
   }
 

@@ -692,6 +692,9 @@ label.btn { cursor: pointer; }
 .word.chunk { display: inline-flex; align-items: center; gap: 8px; }
 .word.chunk kbd { display: grid; place-items: center; width: 20px; height: 20px; border-radius: 6px; border: 1.5px solid var(--line); color: var(--muted); font: 700 .7rem var(--sans); }
 .rp-turn { margin-top: 16px; }
+.resume-card { display: flex; align-items: center; gap: 14px; border: 2px solid var(--gold); }
+.resume-card .resume-i { font-size: 1.6rem; }
+.resume-card small { display: block; color: var(--muted); }
 .rp-turn .q-fr { margin-bottom: 8px; }
 .spot-punct { align-self: center; font-family: var(--serif); font-size: 1.35rem; margin-left: -4px; }
 .spot-word:disabled { cursor: default; color: var(--ink); }

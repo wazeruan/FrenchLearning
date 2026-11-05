@@ -47,6 +47,9 @@ Pick one way and stick with it, or use **Settings → Export backup / Import bac
   reply, and say it aloud when speaking practice is on.
 - **"Today's 30 minutes":** review (~5 min), the next lesson (~15 min), and a listening or speaking drill
   (~10 min), with study time tracked.
+- **Pick up where you left off:** a practice or review is saved after every answer. Leave (or close the
+  app) and it resumes at the same exercise with your score so far; the unit page also offers "Start the
+  practice over". One unfinished session is kept at a time, for up to 7 days after your last answer.
 - **Daily review** with spaced repetition (Leitner boxes: 1, 2, 4, 8, 16 days).
 - **Motivation:** daily XP goal, day streaks, a weekly strip and activity heatmap, 10 levels, path
   milestones and 24 achievements.

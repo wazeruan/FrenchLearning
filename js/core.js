@@ -697,6 +697,51 @@
     }
   }
 
+  // ---------- checkpoint (an interrupted practice or review, to resume) ----------
+  const CHECKPOINT_KEY = 'fr-learn-session-v1';
+  const CHECKPOINT_DAYS = 7;
+  const EX_TYPES = ['mc-fr-en', 'mc-en-fr', 'listen', 'type', 'match', 'order', 'fill', 'speak', 'shadow', 'dictation', 'gender', 'spot', 'chunks'];
+  // A saved session: { v: 1, kind: 'lesson' | 'review', unit, queue: [exercise], total, done, results, elapsed (ms), savedAt (ms) }.
+  // True only when it can be resumed safely with the current course: recent, well-typed, and every
+  // word, drill and unit it points to still exists (course updates may remove or renumber content).
+  function validCheckpoint(data, cp, now = Date.now()) {
+    if (!isObj(cp) || cp.v !== 1 || !['lesson', 'review'].includes(cp.kind)) return false;
+    const finite = (v) => typeof v === 'number' && Number.isFinite(v) && v >= 0;
+    if (![cp.total, cp.done, cp.elapsed, cp.savedAt].every(finite) || cp.done > cp.total || cp.total > 1000) return false;
+    if (cp.elapsed > CHECKPOINT_DAYS * 86400000) return false;
+    if (cp.savedAt > now + 60000 || now - cp.savedAt > CHECKPOINT_DAYS * 86400000) return false;
+    const unit = cp.kind === 'lesson' ? data.units.find((u) => u.id === cp.unit) : null;
+    if (cp.kind === 'lesson' && !unit) return false;
+    // An empty queue is fine: everything was answered and only the results screen is left.
+    if (!Array.isArray(cp.queue) || !Array.isArray(cp.results)) return false;
+    if (!cp.results.every((r) => isObj(r) && typeof r.correct === 'boolean' && typeof r.type === 'string')) return false;
+    const item = (id) => typeof id === 'string' && !!findItem(data, id);
+    const drillOf = (ex) => {
+      const u = data.units.find((x) => x.id === ex.unit);
+      return u && u.grammar && Number.isInteger(ex.drill) && ex.drill >= 0 && ex.drill < u.grammar.drills.length ? u.grammar.drills[ex.drill] : null;
+    };
+    const strings = (a) => Array.isArray(a) && a.every((t) => typeof t === 'string');
+    // Multiple choice: { id, text } options, the answer among them.
+    const choices = (ex) => Array.isArray(ex.options) && ex.options.length > 1 &&
+      ex.options.every((o) => isObj(o) && item(o.id) && typeof o.text === 'string') && ex.options.some((o) => o.id === ex.item);
+    return cp.queue.every((ex) => {
+      if (!isObj(ex) || !EX_TYPES.includes(ex.type)) return false;
+      const d = drillOf(ex);
+      switch (ex.type) {
+        case 'mc-fr-en': case 'mc-en-fr': case 'listen': return item(ex.item) && choices(ex);
+        case 'match': case 'gender': return Array.isArray(ex.pairs) && ex.pairs.length > 0 && ex.pairs.every(item);
+        // The drill may have changed since: the answer must still be among the options, the wrong form still wrong.
+        case 'fill': return !!d && strings(ex.options) && ex.options.includes(d[1]);
+        case 'spot': return !!d && typeof ex.wrong === 'string' && ex.wrong !== d[1] && d[2].includes(ex.wrong);
+        case 'chunks': return typeof ex.fr === 'string' && typeof ex.en === 'string' && typeof ex.audio === 'string' &&
+          Array.isArray(ex.chunks) && ex.chunks.length > 1 && ex.chunks.every((c) => typeof c === 'string');
+        case 'order': return item(ex.item) && strings(ex.tiles);
+        case 'dictation': return item(ex.item) && (ex.tiles === undefined || strings(ex.tiles));
+        default: return item(ex.item); // type, speak, shadow
+      }
+    });
+  }
+
   const Core = {
     STORAGE_KEY, XP, INTERVALS, LEVELS, GOALS, TYPING_MODES, ACHIEVEMENTS,
     dayKey, addDays, diffDays, defaultState, migrate,
@@ -705,6 +750,7 @@
     normalize, checkAnswer, tokenize, frenchSound, pronunciationScore, pronunciationLevel, letterSlots, spellingTiles, revealPrefix, asChoice,
     mulberry32, shuffle, allItems, findItem, buildLesson, buildReview,
     genderOf, bareNoun, genderPick, checkDictation, spotDrill, spotSegments, roleplayTurns, chunkSentence, chunksExercise,
+    CHECKPOINT_KEY, validCheckpoint,
     completedUnits, unitUnlocked, stageProgress, starsFor, evaluateProgress, completeLesson, completeReview, completeListening, drillSpeech,
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = Core;
