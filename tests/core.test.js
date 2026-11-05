@@ -289,8 +289,8 @@ test('tokenize: tokens re-joined equal every example sentence', () => {
 // ---------------------------------------------------------------- buildLesson
 const SINGLE = new Set(['mc-en-fr', 'mc-fr-en', 'listen', 'type']);
 
-test('buildLesson: structure for all 25 units and several seeds', () => {
-  assert.equal(DATA.units.length, 25);
+test('buildLesson: structure for all 26 units and several seeds', () => {
+  assert.equal(DATA.units.length, 26);
   const byId = new Map(Core.allItems(DATA).map((it) => [it.id, it]));
   for (const unit of DATA.units) {
     const ids = unit.items.map((it) => it.id);
@@ -305,8 +305,9 @@ test('buildLesson: structure for all 25 units and several seeds', () => {
       const spots = Math.min(2, spotable);
       const chunks = ex.filter((e) => e.type === 'chunks');
       assert.ok(chunks.length <= 1, tag);
-      assert.equal(ex.length, ids.length + 3 + genders + chunks.length + (unit.grammar ? 6 : 0) + spots, tag);
-      assert.equal(ex.filter((e) => e.type === 'fill').length, unit.grammar ? 6 : 0, tag);
+      const perLesson = unit.grammar ? unit.grammar.perLesson || 6 : 0;
+      assert.equal(ex.length, ids.length + 3 + genders + chunks.length + perLesson + spots, tag);
+      assert.equal(ex.filter((e) => e.type === 'fill').length, perLesson, tag);
       assert.equal(ex.filter((e) => e.type === 'spot').length, spots, tag);
       const dict = ex.filter((e) => e.type === 'dictation');
       assert.equal(dict.length, 1, tag);
@@ -485,25 +486,25 @@ test('evaluateProgress: achievements unlock at the right time, once only', () =>
   assert.ok(!ids(r).includes('words-25'));
   assert.equal(s.achievements['first-lesson'], '2026-10-01');
 
-  // Day 2: unit 2 perfect -> 'perfect', words = 18
+  // Day 2: unit 2 perfect -> 'perfect', words = 22
   r = Core.completeLesson(s, DATA, DATA.units[1].id, allCorrect(DATA.units[1]), at(2026, 10, 2));
   assert.ok(ids(r).includes('perfect'));
   assert.ok(!ids(r).includes('first-lesson'), 'not returned again');
   assert.ok(!ids(r).includes('words-25'));
   assert.equal(r.milestones.length, 0);
 
-  // Day 3: unit 3 -> streak-3, words-25 (26 words), no milestone yet (a1-m1 is after 7 units)
+  // Day 3: unit 3 -> streak-3, words-25 (30 words), no milestone yet (a1-m1 is after 8 units)
   r = Core.completeLesson(s, DATA, DATA.units[2].id, allCorrect(DATA.units[2]), at(2026, 10, 3));
   assert.ok(ids(r).includes('streak-3'));
   assert.ok(ids(r).includes('words-25'));
   assert.ok(!ids(r).includes('perfect'));
   assert.deepEqual(r.milestones, []);
-  // Units 4..6: still no milestone; unit 7 -> a1-m1
-  for (let i = 3; i < 6; i++) {
+  // Units 4..7: still no milestone; unit 8 -> a1-m1
+  for (let i = 3; i < 7; i++) {
     r = Core.completeLesson(s, DATA, DATA.units[i].id, allCorrect(DATA.units[i]), at(2026, 10, 3, 13));
     assert.deepEqual(r.milestones, [], `after ${i + 1} units`);
   }
-  r = Core.completeLesson(s, DATA, DATA.units[6].id, allCorrect(DATA.units[6]), at(2026, 10, 3, 14));
+  r = Core.completeLesson(s, DATA, DATA.units[7].id, allCorrect(DATA.units[7]), at(2026, 10, 3, 14));
   assert.deepEqual(r.milestones.map((m) => m.id), ['a1-m1']);
   assert.equal(s.milestones['a1-m1'], '2026-10-03');
 
@@ -968,7 +969,7 @@ test('speaking: default setting, migration, spokenGood stat and speak-10 achieve
 });
 
 // ---------------------------------------------------------------- course structure (stages, grammar, dialogue)
-const GRAMMAR = DATA.units.filter((u) => u.kind === 'grammar');
+const GRAMMAR = DATA.units.filter((u) => u.grammar); // grammar and sounds units
 const DIALOGUE = DATA.units.filter((u) => u.kind === 'dialogue');
 const audioOk = (id) => {
   const p = path.join(ROOT, 'assets/audio', `${id}.m4a`);
@@ -990,7 +991,7 @@ const audioIds = () => {
 
 test('data: stages cover every unit exactly once, in order; every unit has its stage', () => {
   assert.ok(Array.isArray(DATA.stages) && DATA.stages.length >= 1);
-  assert.equal(DATA.units.length, 25);
+  assert.equal(DATA.units.length, 26);
   const listed = DATA.stages.flatMap((st) => st.units);
   assert.deepEqual(listed, DATA.units.map((u) => u.id), 'stage lists, concatenated, equal the unit order');
   assert.equal(new Set(listed).size, listed.length, 'no unit listed twice');
@@ -1001,13 +1002,13 @@ test('data: stages cover every unit exactly once, in order; every unit has its s
   assert.ok(DATA.stages.some((st) => st.id === 'a1'));
   assert.equal(typeof DATA.voiceCA, 'string');
   assert.ok(DATA.voiceCA.length > 0);
-  for (const u of DATA.units) assert.ok([undefined, 'grammar', 'dialogue'].includes(u.kind), `${u.id} kind ${u.kind}`);
+  for (const u of DATA.units) assert.ok([undefined, 'grammar', 'dialogue', 'sounds'].includes(u.kind), `${u.id} kind ${u.kind}`);
   assert.ok(GRAMMAR.length > 0 && DIALOGUE.length > 0);
 });
 
 test('data: milestones are a1-m1..a1-m4, increasing and within the unit count', () => {
   assert.deepEqual(DATA.milestones.map((m) => m.id), ['a1-m1', 'a1-m2', 'a1-m3', 'a1-m4']);
-  assert.deepEqual(DATA.milestones.map((m) => m.after), [7, 15, 21, 25]);
+  assert.deepEqual(DATA.milestones.map((m) => m.after), [8, 16, 22, 26]);
   let prev = 0;
   for (const m of DATA.milestones) {
     assert.ok(Number.isInteger(m.after) && m.after > prev && m.after <= DATA.units.length, m.id);
@@ -1140,14 +1141,15 @@ test('drillSpeech: no blank, hint or dangling elision left in any course drill',
 });
 
 // ---------------------------------------------------------------- buildLesson: grammar drills
-test('buildLesson: grammar units get exactly 6 valid fill drills for many seeds', () => {
+test('buildLesson: grammar units get exactly 6 (or perLesson) valid fill drills for many seeds', () => {
   for (const u of GRAMMAR) {
     for (let seed = 1; seed <= 40; seed++) {
       const ex = Core.buildLesson(DATA, u.id, Core.mulberry32(seed * 7919));
       const fills = ex.filter((e) => e.type === 'fill');
       const tag = `${u.id} seed ${seed}`;
-      assert.equal(fills.length, 6, tag);
-      assert.equal(new Set(fills.map((f) => f.drill)).size, 6, `${tag}: distinct drills`);
+      const n = u.grammar.perLesson || 6;
+      assert.equal(fills.length, n, tag);
+      assert.equal(new Set(fills.map((f) => f.drill)).size, n, `${tag}: distinct drills`);
       for (const f of fills) {
         assert.equal(f.unit, u.id, tag);
         assert.ok(Number.isInteger(f.drill) && f.drill >= 0 && f.drill < u.grammar.drills.length, `${tag}: drill index`);
@@ -1197,14 +1199,14 @@ test('unitUnlocked: a completed unit stays unlocked even if its predecessor is n
 
 test('stageProgress counts completed units of a stage', () => {
   const s = fresh();
-  assert.deepEqual(Core.stageProgress(s, DATA, 'a1'), { done: 0, total: 25 });
+  assert.deepEqual(Core.stageProgress(s, DATA, 'a1'), { done: 0, total: 26 });
   Core.completeLesson(s, DATA, 'u01', allCorrect(DATA.units[0]), at(2026, 10, 1));
   Core.completeLesson(s, DATA, 'u01', allCorrect(DATA.units[0]), at(2026, 10, 1));
   s.units.g01 = { completed: false, bestScore: 0.4, stars: 1, plays: 1 };
   s.units.zzz = { completed: true, bestScore: 1, stars: 3, plays: 1 }; // unknown id ignored
-  assert.deepEqual(Core.stageProgress(s, DATA, 'a1'), { done: 1, total: 25 });
+  assert.deepEqual(Core.stageProgress(s, DATA, 'a1'), { done: 1, total: 26 });
   DATA.units.forEach((u) => Core.completeLesson(s, DATA, u.id, allCorrect(u), at(2026, 10, 2)));
-  assert.deepEqual(Core.stageProgress(s, DATA, 'a1'), { done: 25, total: 25 });
+  assert.deepEqual(Core.stageProgress(s, DATA, 'a1'), { done: 26, total: 26 });
   assert.deepEqual(Core.stageProgress(s, DATA, 'nope'), { done: 0, total: 0 });
   for (const st of DATA.stages) assert.equal(Core.stageProgress(fresh(), DATA, st.id).total, st.units.length, st.id);
 });
@@ -1537,4 +1539,27 @@ test('validCheckpoint rejects stale, malformed, or out-of-date checkpoints', () 
   assert.equal(Core.validCheckpoint(DATA, bad({ type: 'spot', unit: 'g08', drill: 0, wrong: 'vais' })), false, 'shown form is the answer');
   assert.equal(Core.validCheckpoint(DATA, Object.assign(ok(), { total: 1e308, done: 1 })), false);
   assert.equal(Core.validCheckpoint(DATA, Object.assign(ok(), { elapsed: 1e15 })), false);
+});
+
+// ---------------------------------------------------------------- sounds (pronunciation) unit
+test('sounds unit: every drill hides a vowel spelling inside a word, with distinct options of other spellings', () => {
+  const units = DATA.units.filter((u) => u.kind === 'sounds');
+  assert.equal(units.length, 1);
+  const u = units[0];
+  assert.equal(DATA.units.indexOf(u), 1, 'right after the first unit, before spelling gets harder');
+  assert.ok(u.grammar.sections.length >= 16, 'a section per vowel sound');
+  assert.equal(Core.spotDrill(["J'___ deux frères.", 'ai', []]), true, "an elided J' before the blank is still a whole word");
+  for (const d of u.grammar.drills) {
+    const [q, answer, options, en] = d;
+    assert.match(q, /\S___|___\S/, `${q}: blank inside a word`);
+    assert.ok(options.includes(answer) && new Set(options).size === options.length && options.length === 3, q);
+    const word = Core.drillSpeech(d).split(' ').pop();
+    assert.ok(en && !en.split(/[\s,()/]+/).includes(word), `${q}: the English doesn't give the word away`);
+    assert.equal(Core.spotDrill(d), false, `${q}: never used for find-the-mistake`);
+  }
+  for (const seed of [1, 2, 3]) {
+    const ex = Core.buildLesson(DATA, u.id, Core.mulberry32(seed));
+    assert.equal(ex.filter((e) => e.type === 'fill').length, u.grammar.perLesson);
+    assert.equal(ex.filter((e) => e.type === 'spot').length, 0);
+  }
 });

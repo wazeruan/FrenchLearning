@@ -602,7 +602,7 @@
     const i = D.units.findIndex((u) => !(state.units[u.id] && state.units[u.id].completed));
     return i === -1 ? D.units.length - 1 : i;
   }
-  const KIND_LABEL = { grammar: 'Grammar', dialogue: 'Dialogue' };
+  const KIND_LABEL = { grammar: 'Grammar', dialogue: 'Dialogue', sounds: 'Sounds' };
   // Suggested skill drill for today: the latest unlocked dialogue, else speaking on the current words.
   function skillDrill() {
     const latestFirst = D.units.filter((u, i) => u.dialogue && C.unitUnlocked(state, D, i)).reverse();
@@ -719,7 +719,7 @@
       <a class="back" href="#/">← Back</a>
       <section class="card unit-intro">
         <img class="unit-cover" src="assets/img/units/${u.cover}.svg" alt="">
-        <small class="eyebrow">${i + 1} · ${KIND_LABEL[u.kind] || 'Vocabulary'} · ${u.items.length} ${u.kind === 'vocab' || !u.kind ? 'words' : 'key phrases'}</small>
+        <small class="eyebrow">${i + 1} · ${KIND_LABEL[u.kind] || 'Vocabulary'} · ${u.items.length} ${u.kind === 'vocab' || !u.kind ? 'words' : u.kind === 'sounds' ? 'key words' : 'key phrases'}</small>
         <h1>${esc(u.title)}</h1>
         <p class="sub">${esc(u.en)}</p>
         ${st ? `<p>${stars(st.stars)} <small class="muted">Best ${Math.round(st.bestScore * 100)}%</small></p>` : ''}
@@ -739,9 +739,10 @@
   }
   // The guided order of a unit: dialogues start by listening; grammar has its lesson after the forms.
   function unitSteps(u) {
-    const learnStep = { route: 'learn', label: u.kind === 'grammar' ? '📖 Learn the forms' : u.kind === 'dialogue' ? '📖 Key phrases' : '📖 Learn the words' };
+    const learnStep = { route: 'learn', label: u.kind === 'grammar' ? '📖 Learn the forms' : u.kind === 'dialogue' ? '📖 Key phrases' : u.kind === 'sounds' ? '📖 Key words' : '📖 Learn the words' };
     const practice = { route: 'practice', label: '✏️ Practice' };
     if (u.kind === 'grammar') return [learnStep, { route: 'grammar', label: '📘 Grammar lesson' }, practice];
+    if (u.kind === 'sounds') return [{ route: 'grammar', label: '🔤 The vowel sounds' }, learnStep, practice];
     if (u.kind === 'dialogue') return [{ route: 'dialogue', label: '🎧 Listen to the dialogue' }, learnStep, { route: 'roleplay', label: '🎭 Role-play' }, practice];
     return [learnStep, practice];
   }
@@ -1354,9 +1355,11 @@
     const [q, answer, , en] = u.grammar.drills[ex.drill];
     const audio = `${u.id}-d${ex.drill + 1}`;
     const [before, afterTxt] = q.split('___');
+    const sounds = u.kind === 'sounds'; // listen to the word, then choose the letters that spell its vowel
     $('#ex').innerHTML = `
-      <p class="instr">Complete the sentence</p>
-      <div class="fill-sentence" lang="fr">${fr(before)}<span class="blank" id="blank">____</span>${fr(afterTxt)}</div>
+      <p class="instr">${sounds ? 'Listen, then choose the spelling' : 'Complete the sentence'}</p>
+      ${sounds ? `<div class="listen-row">${speakerBtn(audio, 'Play the word', 'huge')}<button class="speaker slow" data-audio="${audio}" data-slow="1" aria-label="Play slowly">${ICON.turtle}</button></div>` : ''}
+      <div class="fill-sentence" lang="fr">${fr(before)}<span class="blank${sounds ? ' in-word' : ''}" id="blank">____</span>${fr(afterTxt)}</div>
       <p class="fill-en">${esc(en)}</p>
       <div class="options">${ex.options.map((o, k) => `<button class="option" data-o="${esc(o)}" lang="fr"><kbd>${k + 1}</kbd><span>${fr(o)}</span></button>`).join('')}</div>`;
     let chosen = null;
@@ -1383,6 +1386,7 @@
       if (n >= 1 && n <= opts.length && !opts[n - 1].disabled) choose(opts[n - 1]);
       else if (e.key === 'Enter' && chosen) { e.preventDefault(); check(); }
     };
+    if (sounds) later(() => Sound.play(audio, itemText(audio)), 250);
   }
 
   // 'speak': say a word. 'shadow': listen to the example sentence and repeat it straight after Coco,

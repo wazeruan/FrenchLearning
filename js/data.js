@@ -168,11 +168,108 @@
   //   lines: [[speaker, fr, en]], questions: [[question_fr, question_en, [options], correctIndex]] }.
   const G = (unit, grammar) => Object.assign(unit, { kind: 'grammar', grammar });
   const DLG = (unit, dialogue) => Object.assign(unit, { kind: 'dialogue', dialogue });
+  // Sound units use the grammar format: sections teach each sound, drills hide its spelling in a word.
+  const SND = (unit, lesson) => Object.assign(unit, { kind: 'sounds', grammar: lesson });
   const num = (n) => ({ num: String(n) });
   const clock = (t) => ({ clock: t });
   const CA = 'Amélie'; // Canadian French voice (fr_CA)
 
   const a1 = [
+    // ---------- pronunciation: the vowel sounds and how each is spelled ----------
+    // kind 'sounds': learn key words → the sound lesson → practice. Drills hide the vowel's spelling in a
+    // word you hear ("v___s" → ou); the wrong options are spellings of *other* sounds, so the sound alone
+    // tells you the answer.
+    SND(U('p01', 'Les sons', 'Vowel sounds · how to spell what you hear', 'sounds',
+      'Once you know the sounds, most French spelling follows patterns: « eau », « au » and a word-final « o » all say [o]; « ou » and « u » never sound the same.',
+      [
+        I('p01-01', 'vous', 'you (formal / plural)', e('🫵'), 'Vous parlez français ?', 'Do you speak French?', 'ou = [u], like "food"'),
+        I('p01-02', 'tu', 'you (informal)', e('👉'), 'Tu habites où ?', 'Where do you live?', 'u = [y]: say "ee" with rounded lips'),
+        I('p01-03', 'la rue', 'the street', e('🛣️'), 'La rue est calme.', 'The street is quiet.', 'u = [y]'),
+        I('p01-04', 'beau', 'beautiful, nice (m.)', e('🌅'), 'Il fait beau.', 'The weather is nice.', 'eau = [o]'),
+        I('p01-05', "l'été", 'summer', e('🏖️'), "L'été est chaud.", 'Summer is hot.', 'masculine; é = [e]'),
+        I('p01-06', 'la mer', 'the sea', e('🌊'), 'La mer est bleue.', 'The sea is blue.', 'e before a sounded r = [ɛ], like "bed"'),
+        I('p01-07', 'les cheveux', 'hair', e('💇'), 'Elle a les cheveux longs.', 'She has long hair.', 'eu = [ø]; x is silent'),
+        I('p01-08', 'la fleur', 'the flower', e('🌸'), 'La fleur sent bon.', 'The flower smells nice.', 'eu before a sounded consonant = [œ]'),
+        I('p01-09', 'moi', 'me', e('🙋'), "Moi, j'habite à Calgary.", 'Me, I live in Calgary.', 'oi = [wa]'),
+        I('p01-10', 'le temps', 'time / the weather', e('⏰'), "Je n'ai pas le temps.", "I don't have time.", 'em = [ɑ̃]; p and s are silent'),
+        I('p01-11', 'le pont', 'the bridge', e('🌉'), 'Le pont est long.', 'The bridge is long.', 'on = [ɔ̃]'),
+        I('p01-12', 'le matin', 'the morning', e('🌄'), 'Je travaille le matin.', 'I work in the morning.', 'in = [ɛ̃]'),
+      ]), {
+      perLesson: 8,
+      sections: [
+        { h: 'How to use this lesson', p: 'Each sound has one or more spellings. Listen to every example, say it, and notice the letters. When you hear the sound in a new word, you will know which letters to write.' },
+        { h: '[a] — a, à', table: [['a', 'madame, chat'], ['à', 'là, voilà']], p: 'Short and open, like the a in "father" but shorter.',
+          examples: [['madame', 'madam'], ['là', 'there']] },
+        { h: '[i] — i, î, y', table: [['i', 'lit, ami'], ['î', 'île'], ['y', 'stylo']], p: 'Like "ee" in "see", but short and tight, with no glide.',
+          examples: [['un ami', 'a friend'], ['un stylo', 'a pen']] },
+        { h: '[u] — ou, où, oû', table: [['ou', 'vous, rouge, soupe'], ['où', 'où (where)'], ['oû', 'goût']], p: 'Like "oo" in "food", with very rounded lips.',
+          examples: [['vous', 'you'], ['la soupe', 'the soup']] },
+        { h: '[y] — u, û', table: [['u', 'tu, rue, une'], ['û', 'sûr']], p: 'English has no such sound: say "ee", keep your tongue there and round your lips. « vous » and « vu » are different words.',
+          examples: [['tu', 'you'], ['la rue', 'the street']] },
+        { h: '[o] — o, ô, au, eau', table: [['o (end of a word)', 'mot, vélo'], ['ô', 'hôtel'], ['au', 'chaud, jaune'], ['eau', 'beau, l\'eau']], p: 'Like "o" in "go", but with no "w" glide at the end.',
+          examples: [['il fait chaud', "it's hot"], ['beau', 'beautiful']] },
+        { h: '[ɔ] — o before a sounded consonant', table: [['o', 'porte, école, homme']], p: 'More open, like "o" in "off".',
+          examples: [['la porte', 'the door'], ["l'école", 'the school']] },
+        { h: '[e] — é, -er, -ez, et', table: [['é', 'été, café'], ['-er (end of a word)', 'parler, aller'], ['-ez', 'nez, vous parlez'], ['et', 'et (and)']], p: 'Like "ay" in "say", short, with no glide. The r of -er and the z of -ez are silent.',
+          examples: [['le café', 'the coffee'], ['parler', 'to speak']] },
+        { h: '[ɛ] — è, ê, ai, ei, e + two consonants', table: [['è', 'mère, père'], ['ê', 'tête, fenêtre'], ['ai', "lait, j'aime"], ['ei', 'neige'], ['e + 2 consonants / sounded consonant', 'belle, merci, la mer']], p: 'Like "e" in "bed".',
+          examples: [['la mère', 'the mother'], ["j'aime", 'I love']] },
+        { h: '[ə] — e (and often silent)', table: [['e in small words and open syllables', 'le, je, petit, demain'], ['e at the end of a longer word', 'silent: rouge, porte']], p: 'A weak "uh", like the a in "about". In everyday speech it is often dropped: « petit » sounds like "ptit".',
+          examples: [['petit', 'small'], ['demain', 'tomorrow']] },
+        { h: '[ø] — eu, œu at the end of a syllable', table: [['eu', 'deux, bleu, jeudi'], ['œu', 'des œufs (plural; un œuf has [œ])']], p: 'Round your lips for "oo" and say "ay": a tight sound.',
+          examples: [['deux', 'two'], ['bleu', 'blue']] },
+        { h: '[œ] — eu, œu before a sounded consonant', table: [['eu', 'fleur, heure, neuf'], ['œu', 'sœur']], p: 'The same lips, but more open, like the "u" in "fur" with rounded lips.',
+          examples: [['la fleur', 'the flower'], ['ma sœur', 'my sister']] },
+        { h: '[wa] — oi', table: [['oi', 'moi, trois, noir, voiture']], p: 'Always "wa": « moi » sounds like "mwa".',
+          examples: [['trois', 'three'], ['la voiture', 'the car']] },
+        { h: '[ɑ̃] — an, am, en, em', table: [['an', 'grand, maman'], ['am', 'chambre'], ['en', 'enfant, comment'], ['em', 'temps, ensemble']], p: 'A nasal "ah": air goes through the nose and the n is not pronounced. am / em are written before b and p.',
+          examples: [['un enfant', 'a child'], ['la chambre', 'the bedroom']] },
+        { h: '[ɔ̃] — on, om', table: [['on', 'bonjour, onze, pont'], ['om', 'nom, combien']], p: 'A nasal "o", lips rounded, no n sound.',
+          examples: [['bonjour', 'hello'], ['combien', 'how much']] },
+        { h: '[ɛ̃] — in, im, ain, ein', table: [['in', 'vin, matin'], ['im', 'important'], ['ain', 'pain, demain'], ['ein', 'plein']], p: 'A nasal "e" as in "bed".',
+          examples: [['le pain', 'the bread'], ['le matin', 'the morning']] },
+        { h: '[œ̃] — un, um', table: [['un', 'un, lundi, brun'], ['um', 'parfum']], p: 'A nasal [œ], with rounded lips. Canadian French keeps it distinct; many speakers in France say it like [ɛ̃], so « brun » and « brin » sound alike there.',
+          examples: [['lundi', 'Monday'], ['un', 'a, one']] },
+        { h: 'Nasal or not?', p: 'an, on, in… are nasal only when no vowel follows and the n is not doubled. With a vowel or nn / mm after them, you hear a normal vowel and the n:',
+          table: [['bon [ɔ̃] → bonne [ɔn]', 'good (m. / f.)'], ['un [œ̃] → une [yn]', 'a, one (m. / f.)'], ['an [ɑ̃] → année [ane]', 'year']],
+          examples: [['bon, bonne', 'good'], ['un, une', 'a, one']] },
+      ],
+      // [word with the vowel's spelling hidden, answer, options, English]. Wrong options always spell another sound.
+      drills: [
+        ['m___dame', 'a', ['a', 'o', 'an'], 'madam'],
+        ['ch___t', 'a', ['a', 'ou', 'an'], 'cat'],
+        ['un am___', 'i', ['i', 'u', 'é'], 'a friend'],
+        ['un st___lo', 'y', ['y', 'u', 'e'], 'a pen'],
+        ['v___s', 'ou', ['ou', 'u', 'o'], 'you (formal)'],
+        ['la s___pe', 'ou', ['ou', 'u', 'eu'], 'the soup'],
+        ['t___', 'u', ['u', 'ou', 'eu'], 'you (informal)'],
+        ['la r___e', 'u', ['u', 'ou', 'o'], 'the street'],
+        ['b___', 'eau', ['eau', 'eu', 'ou'], 'beautiful'],
+        ['il fait ch___d', 'au', ['au', 'an', 'ou'], "it's hot"],
+        ['la p___rte', 'o', ['o', 'ou', 'eu'], 'the door'],
+        ['le caf___', 'é', ['é', 'e', 'i'], 'the coffee'],
+        ['parl___', 'er', ['er', 'e', 'a'], 'to speak'],
+        ['la m___re', 'è', ['è', 'i', 'eu'], 'the mother'],
+        ["j'___me", 'ai', ['ai', 'a', 'i'], 'I love'],
+        ['la t___te', 'ê', ['ê', 'a', 'ou'], 'the head'],
+        ['p___tit', 'e', ['e', 'é', 'i'], 'small'],
+        ['d___main', 'e', ['e', 'ou', 'a'], 'tomorrow'],
+        ['d___x', 'eu', ['eu', 'ou', 'u'], 'two'],
+        ['bl___', 'eu', ['eu', 'ou', 'é'], 'blue'],
+        ['la fl___r', 'eu', ['eu', 'ou', 'o'], 'the flower'],
+        ["l'h___re", 'eu', ['eu', 'ou', 'a'], 'the hour'],
+        ['m___', 'oi', ['oi', 'ou', 'eu'], 'me'],
+        ['tr___s', 'oi', ['oi', 'ou', 'é'], 'three'],
+        ['un enf___t', 'an', ['an', 'on', 'in'], 'a child'],
+        ['la ch___bre', 'am', ['am', 'om', 'im'], 'the bedroom'],
+        ['b___jour', 'on', ['on', 'an', 'ou'], 'hello'],
+        ['le p___t', 'on', ['on', 'an', 'in'], 'the bridge'],
+        ['le p___', 'ain', ['ain', 'an', 'on'], 'the bread'],
+        ['le mat___', 'in', ['in', 'an', 'on'], 'the morning'],
+        ['l___di', 'un', ['un', 'on', 'an'], 'Monday'],
+        ['m___ frère', 'on', ['on', 'an', 'in'], 'my brother'],
+      ],
+    }),
     G(U('g01', 'Être', 'To be · je suis…', 'grammar-book',
       'Être (to be) is irregular — learn it by heart: je suis, tu es, il est, nous sommes, vous êtes, ils sont.',
       [
@@ -627,7 +724,7 @@
   const stages = [
     {
       id: 'a1', title: 'Débutant', level: 'A1', nclc: 'NCLC 1–3', en: 'Foundations: greet, introduce yourself, numbers, time, everyday needs',
-      units: ['u01', 'u02', 'g01', 'u03', 'g02', 'u04', 'g03', 'u05', 'g04', 'd01', 'u06', 'g05', 'n01', 'u08', 'g06',
+      units: ['u01', 'p01', 'u02', 'g01', 'u03', 'g02', 'u04', 'g03', 'u05', 'g04', 'd01', 'u06', 'g05', 'n01', 'u08', 'g06',
         'd02', 'u07', 'g07', 'u09', 'n02', 'd03', 'u10', 'g08', 'u11', 'u12'],
     },
   ];
@@ -636,10 +733,10 @@
 
   // Milestones: checkpoints along the path, reached when the listed number of units is complete.
   const milestones = [
-    { id: 'a1-m1', after: 7, title: 'Premiers pas', en: 'You can greet, introduce yourself and describe things.' },
-    { id: 'a1-m2', after: 15, title: 'Je me débrouille', en: 'You can say what you do, ask for things and shop.' },
-    { id: 'a1-m3', after: 21, title: 'Au quotidien', en: 'Numbers, time and appointments — the basics of daily life.' },
-    { id: 'a1-m4', after: 25, title: 'Niveau A1 ✓', en: 'Stage 1 complete (≈ NCLC 2–3). On to A2!' },
+    { id: 'a1-m1', after: 8, title: 'Premiers pas', en: 'You can greet, introduce yourself and describe things.' },
+    { id: 'a1-m2', after: 16, title: 'Je me débrouille', en: 'You can say what you do, ask for things and shop.' },
+    { id: 'a1-m3', after: 22, title: 'Au quotidien', en: 'Numbers, time and appointments — the basics of daily life.' },
+    { id: 'a1-m4', after: 26, title: 'Niveau A1 ✓', en: 'Stage 1 complete (≈ NCLC 2–3). On to A2!' },
   ];
 
   const data = { units: ordered, stages, milestones, voice: 'Thomas', voiceCA: CA };

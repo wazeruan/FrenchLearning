@@ -26,9 +26,14 @@ Pick one way and stick with it, or use **Settings → Export backup / Import bac
 
 ## What's inside
 
-- **Stage 1 · A1 (≈ NCLC 1–3), 25 units:** 12 vocabulary units, 10 grammar lessons (être, articles,
+- **Stage 1 · A1 (≈ NCLC 1–3), 26 units:** 12 vocabulary units, 10 grammar lessons (être, articles,
   adjectives, avoir and possessives, -er verbs, negation, questions, aller/faire, numbers to 100,
-  telling time) and 3 Canadian-life dialogues (airport, grocery store, booking a clinic appointment).
+  telling time), 3 Canadian-life dialogues (airport, grocery store, booking a clinic appointment), and
+  a pronunciation chapter.
+- **Les sons** (unit 2, pronunciation): the French vowel sounds — [a] [i] [u] [y] [o] [ɔ] [e] [ɛ] [ə] [ø]
+  [œ] [wa] and the nasals [ɑ̃] [ɔ̃] [ɛ̃] [œ̃] — with the letters that spell each one, example words to hear, and when
+  an / on / in are not nasal. Its practice plays a word and hides its vowel (« v___s »): choose the
+  spelling you hear, so you can spell new words from their sound.
 - **Each unit is a guided sequence:** words → grammar lesson or dialogue → practice.
 - **Eleven exercise types:** meaning (FR→EN), translation (EN→FR), listening, spelling (letter tiles,
   keyboard with hints, or off), matching pairs, sentence building, grammar fill-in-the-blank, plus:

@@ -90,6 +90,10 @@ const covers = {
     <path d="M30 44h38M30 58h38M30 72h24" stroke="${C.sky}" stroke-width="4" stroke-linecap="round"/>
     <g transform="rotate(35 84 60)"><rect x="76" y="20" width="16" height="64" rx="3" fill="${C.gold}" ${S}/>
     <path d="M76 84l8 16 8-16z" fill="#F5C9A4" ${S}/><rect x="76" y="20" width="16" height="10" rx="3" fill="${C.red}" ${S}/></g>`, '#FFF0C9'),
+  sounds: svg(`
+    <path d="M18 30a12 12 0 0 1 12-12h60a12 12 0 0 1 12 12v38a12 12 0 0 1-12 12H52l-20 18v-18h-2a12 12 0 0 1-12-12z" fill="${C.white}" ${S}/>
+    <text x="60" y="58" text-anchor="middle" font-family="Georgia, serif" font-size="26" font-weight="700" fill="${C.navy}">a<tspan fill="${C.red}">é</tspan>ou</text>
+    <path d="M86 92c6-4 6-12 0-16M94 98c11-8 11-24 0-32" fill="none" stroke="${C.navy}" stroke-width="4" stroke-linecap="round"/>`, '#E3EAF6'),
   'grammar-puzzle': svg(`
     <path d="M22 22h32v10a8 8 0 1 0 16 0V22h28v32H88a8 8 0 1 0 0 16h10v28H22z" fill="${C.white}" ${S}/>
     <path d="M60 22v28h-10a8 8 0 1 0 0 16h10v32" fill="none" ${S}/>

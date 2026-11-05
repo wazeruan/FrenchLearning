@@ -360,7 +360,7 @@
     const tail = chunkEx ? [chunkEx, sentence] : [sentence];
     if (!unit.grammar) return lesson.concat(tail);
     // Grammar units: 6 fill-in-the-blank drills, spread through the second half.
-    const drills = shuffle(unit.grammar.drills.map((d, i) => i), rng).slice(0, 6).map((i) => ({
+    const drills = shuffle(unit.grammar.drills.map((d, i) => i), rng).slice(0, unit.grammar.perLesson || 6).map((i) => ({
       type: 'fill', unit: unit.id, drill: i, options: shuffle(unit.grammar.drills[i][2], rng),
     }));
     const out = lesson.slice(0, mid + 1);
@@ -525,8 +525,9 @@
   }
 
   // ---------- find the mistake ----------
-  // Drills usable as error-spotting: the blank is part of a sentence (not "17 = ___").
-  const spotDrill = ([sentence]) => !/^\d+ = ___$/.test(sentence);
+  // Drills usable as error-spotting: the blank is a whole word of a sentence (not "17 = ___", nor the
+  // inside of a word as in the spelling drills "v___s").
+  const spotDrill = ([sentence]) => !/^\d+ = ___$/.test(sentence) && !/\p{L}___|___\p{L}/u.test(sentence);
   // The drill sentence with a wrong form in the blank, as segments: [{ text, wrong, punct }].
   // punct segments are shown but can't be picked: standalone punctuation (French puts a space before
   // ? ! : ;) and hints in brackets such as "(7 h 30)".

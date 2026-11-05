@@ -630,6 +630,7 @@ label.btn { cursor: pointer; }
 .fill-sentence { font-family: var(--serif); font-size: 1.6rem; line-height: 1.5; margin: 8px 0 4px; }
 .blank { display: inline-block; min-width: 90px; margin: 0 4px; padding: 0 8px; border-bottom: 3px solid var(--navy); color: var(--muted); text-align: center; }
 .blank.filled { color: var(--navy); }
+.blank.in-word { min-width: 1.4em; margin: 0; padding: 0 1px; }
 .blank.right { color: var(--green); border-color: var(--green); }
 .blank.wrong { color: var(--red); border-color: var(--red); }
 .fill-en { color: var(--muted); margin: 0 0 18px; }
