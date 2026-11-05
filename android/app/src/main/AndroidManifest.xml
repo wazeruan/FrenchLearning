@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- No INTERNET permission and no cloud backup: everything stays on the device (use Export backup). -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <!-- WebView needs this to capture the microphone for getUserMedia. -->
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+    <uses-feature android:name="android.hardware.microphone" android:required="false" />
+
+    <application
+        android:label="Coco French"
+        android:icon="@mipmap/ic_launcher"
+        android:allowBackup="false"
+        android:largeHeap="true"
+        android:theme="@style/Theme.Coco">
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboard|keyboardHidden|navigation|density"
+            android:windowSoftInputMode="adjustResize"
+            android:resizeableActivity="true">
+            <!-- Galaxy Z Fold cover screen, split screen, pop-up view and DeX windows can be this small. -->
+            <layout android:minWidth="280dp" android:minHeight="400dp" />
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>

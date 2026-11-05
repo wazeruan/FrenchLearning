@@ -1,0 +1,66 @@
+// Coco · French for Android: a WebView around the offline course. The course files (and the speech
+// model, if scripts/setup-speech.sh was run) are copied from the repository into the APK's assets/web.
+plugins {
+    id 'com.android.application'
+}
+
+def repo = rootProject.projectDir.parentFile
+def webOut = layout.buildDirectory.dir('webAssets')
+
+def syncWeb = tasks.register('syncWebAssets', Sync) {
+    from(repo) {
+        include 'index.html', 'css/**', 'js/**', 'assets/**'
+        // Speaking practice adds ~150 MB; -Plite builds the APK without it (~10 MB).
+        def m = new File(repo, 'models/onnx-community/whisper-base/onnx')
+        if (project.hasProperty('lite')) {
+            logger.lifecycle('(lite build: no speaking practice)')
+        } else if (new File(m, 'encoder_model.onnx').exists() && new File(m, 'decoder_model_merged_quantized.onnx').exists()
+                && new File(repo, 'vendor/transformers/transformers.min.js').exists()) {
+            include 'models/**', 'vendor/**'
+        } else {
+            logger.lifecycle('(speech model not installed — run scripts/setup-speech.sh first to include speaking practice)')
+        }
+        exclude '**/.DS_Store', '**/*.part'
+    }
+    into webOut.map { it.dir('web') }
+}
+
+android {
+    namespace 'local.cocofrench.app'
+    compileSdk 35
+    buildToolsVersion '35.0.0'
+
+    defaultConfig {
+        applicationId 'local.cocofrench.app'
+        minSdk 26
+        targetSdk 35
+        versionCode 1
+        versionName '1.0'
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled true
+            shrinkResources true
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            // Signed with this machine's debug key: fine for installing on your own devices (not for Play).
+            signingConfig signingConfigs.debug
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    sourceSets.main.assets.srcDirs += webOut
+    // Already-compressed audio and the large model files load faster stored as they are.
+    androidResources { noCompress += ['m4a', 'onnx', 'wasm'] }
+}
+
+tasks.named('preBuild') { dependsOn syncWeb }
+
+dependencies {
+    implementation 'androidx.webkit:webkit:1.12.1'
+    implementation 'androidx.core:core:1.13.1'
+}

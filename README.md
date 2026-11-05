@@ -10,6 +10,11 @@ stages and the plan.
 - **Mac app (recommended):** open **Coco French** from Applications / Launchpad. It is a native window
   with everything inside it (lessons, audio, offline speech model). Build or update it with
   `./scripts/build-mac-app.sh --install` (needs Xcode Command Line Tools).
+- **Android app (phones, tablets, Samsung Galaxy incl. Z Fold/Flip and DeX):** build it with
+  `./scripts/build-android-app.sh` (needs JDK 17 and the Android SDK) → `build/Coco-French.apk`, then install
+  it with `--install` (USB debugging) or copy the APK to the phone. Speaking practice is included when the
+  speech model is installed (APK ≈ 160 MB); `--lite` leaves it out (≈ 8 MB). Phones run recognition on the
+  CPU, so a pronunciation check takes several seconds (≈ 5 s per word in the emulator).
 - **In a browser:** double-click `start.command` (serves the folder on `127.0.0.1:8642`, this machine
   only), or open `index.html` directly — everything except speaking practice works that way.
 
@@ -73,7 +78,8 @@ js/asr-worker.js    offline speech recognition (Whisper via transformers.js) in 
 assets/audio/       <id>.m4a (word) and <id>-ex.m4a (example sentence)
 assets/img/         mascot and unit cover illustrations (SVG)
 macos/              the native Mac app (Swift: window + built-in localhost server)
-scripts/            generators for audio and art, speech setup, local server, build-mac-app.sh
+android/            the Android app (Java WebView; course files are copied into the APK at build time)
+scripts/            generators for audio and art, speech setup, local server, build-mac-app.sh, build-android-app.sh
 models/, vendor/    speech model + runtime (downloaded by setup-speech.sh, not in git)
 tests/              node:test unit tests for core.js
 ```
