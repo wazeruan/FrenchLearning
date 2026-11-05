@@ -702,5 +702,6 @@ label.btn { cursor: pointer; }
 
 /* Static rendering for the Mac app's --snapshot check (animations don't run in a hidden window). */
 .snapshot *, .snapshot *::before, .snapshot *::after { animation: none !important; transition: none !important; }
+.snapshot #toasts { display: none; } /* README screenshots: no passing notifications */
 .steps .na a { opacity: .6; }
 .steps .na .check { border-style: dashed; }

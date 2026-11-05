@@ -13,9 +13,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate, WKNaviga
     private var crashTimes: [Date] = []
     private var downloadTargets: [ObjectIdentifier: (temp: URL, final: URL)] = [:]
     private var isHeadless: Bool { selfTest || snapshotArgs != nil }
-    private func isOurPage(_ url: URL?) -> Bool { url?.host == "127.0.0.1" && url?.port == Int(appPort) }
+    // Headless runs (self-test, snapshots) use their own port and a throwaway data store, so they never
+    // collide with an open copy of the app or touch the progress saved in it.
+    private var port: UInt16 { isHeadless ? appPort + 1 : appPort }
+    private func isOurPage(_ url: URL?) -> Bool { url?.host == "127.0.0.1" && url?.port == Int(port) }
     private let selfTest = CommandLine.arguments.contains("--selftest")
-    // --snapshot <file.png> [#/route]: render the window to an image and quit (used to check the layout).
+    // --snapshot <file.png> [#/route] [--state <file.json>]: render the window to an image and quit (used to
+    // check the layout and for the README screenshots). --state is a JSON object of localStorage entries
+    // (key → string) to start from, e.g. demo progress; without it the page starts empty.
     private lazy var snapshotArgs: (path: String, route: String)? = {
         let args = CommandLine.arguments
         guard let i = args.firstIndex(of: "--snapshot"), i + 1 < args.count else { return nil }
@@ -26,10 +31,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate, WKNaviga
         buildMenu()
         let webRoot = Bundle.main.resourceURL!.appendingPathComponent("web")
         server = LocalServer(root: webRoot)
-        server.start(port: appPort) { [weak self] error in
+        server.start(port: port) { [weak self] error in
             guard let self else { return }
             if let error {
-                self.fail("Coco · French couldn't start its local page server on port \(appPort).\n\n\(error.localizedDescription)\n\nIs another copy of the app already open?")
+                self.fail("Coco · French couldn't start its local page server on port \(self.port).\n\n\(error.localizedDescription)\n\nIs another copy of the app already open?")
                 return
             }
             self.openWindow()
@@ -38,7 +43,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate, WKNaviga
 
     private func openWindow() {
         let config = WKWebViewConfiguration()
-        config.websiteDataStore = .default() // persistent: progress survives restarts
+        config.websiteDataStore = isHeadless ? .nonPersistent() : .default() // persistent: progress survives restarts
+        if let state = snapshotState {
+            // Runs before the page's own scripts, so the app starts with this saved state.
+            let js = "(() => { const s = \(state); for (const k in s) localStorage.setItem(k, s[k]); })();"
+            config.userContentController.addUserScript(WKUserScript(source: js, injectionTime: .atDocumentStart, forMainFrameOnly: true))
+        }
         config.mediaTypesRequiringUserActionForPlayback = [] // pronunciation plays automatically
         config.preferences.isElementFullscreenEnabled = true
         web = WKWebView(frame: .zero, configuration: config)
@@ -53,10 +63,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate, WKNaviga
         window.minSize = NSSize(width: 960, height: 640)
         window.contentView = web
         window.center()
-        window.setFrameAutosaveName("CocoMainWindow")
+        if !isHeadless { window.setFrameAutosaveName("CocoMainWindow") } // snapshots keep the default size
         if !selfTest && snapshotArgs == nil { window.makeKeyAndOrderFront(nil) }
         NSApp.activate(ignoringOtherApps: true)
-        web.load(URLRequest(url: URL(string: "http://127.0.0.1:\(appPort)/index.html")!))
+        web.load(URLRequest(url: URL(string: "http://127.0.0.1:\(port)/index.html\(snapshotArgs?.route ?? "")")!))
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
@@ -103,8 +113,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate, WKNaviga
         }
     }
 
+    // The JSON text of --state <file.json>, if given and valid.
+    private lazy var snapshotState: String? = {
+        let args = CommandLine.arguments
+        guard let i = args.firstIndex(of: "--state"), i + 1 < args.count,
+              let data = FileManager.default.contents(atPath: args[i + 1]),
+              (try? JSONSerialization.jsonObject(with: data)) is [String: String] else { return nil }
+        return String(data: data, encoding: .utf8)
+    }()
+
     private func takeSnapshot(_ path: String, route: String) {
-        web.evaluateJavaScript("location.hash = '\(route)'; document.documentElement.classList.add('snapshot')")
+        // The page was loaded at the route already; this only stops animations so it renders at rest.
+        web.evaluateJavaScript("document.documentElement.classList.add('snapshot')")
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
             self?.web.takeSnapshot(with: nil) { image, _ in
                 if let tiff = image?.tiffRepresentation, let rep = NSBitmapImageRep(data: tiff),
@@ -219,7 +239,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate, WKNaviga
                  initiatedByFrame frame: WKFrameInfo, type: WKMediaCaptureType,
                  decisionHandler: @escaping (WKPermissionDecision) -> Void) {
         // Only our own page may use the microphone (macOS still asks you once, system-wide).
-        decisionHandler(origin.host == "127.0.0.1" && origin.port == Int(appPort) && type == .microphone ? .grant : .deny)
+        decisionHandler(origin.host == "127.0.0.1" && origin.port == Int(port) && type == .microphone ? .grant : .deny)
     }
 
     // MARK: - Menus
@@ -280,7 +300,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate, WKNaviga
     @objc private func reloadPage() { web?.reload() }
 
     private func fail(_ message: String) {
-        if selfTest { print("SELFTEST failed:", message); exit(1) }
+        if isHeadless { print(selfTest ? "SELFTEST failed:" : "SNAPSHOT failed:", message); exit(1) } // never an alert on screen
         let alert = NSAlert()
         alert.messageText = "Coco · French"
         alert.informativeText = message
