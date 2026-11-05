@@ -303,7 +303,9 @@ test('buildLesson: structure for all 25 units and several seeds', () => {
       const fills = new Set(ex.filter((e) => e.type === 'fill').map((e) => e.drill));
       const spotable = unit.grammar ? unit.grammar.drills.filter((d, i) => !fills.has(i) && Core.spotDrill(d)).length : 0;
       const spots = Math.min(2, spotable);
-      assert.equal(ex.length, ids.length + 3 + genders + (unit.grammar ? 6 : 0) + spots, tag);
+      const chunks = ex.filter((e) => e.type === 'chunks');
+      assert.ok(chunks.length <= 1, tag);
+      assert.equal(ex.length, ids.length + 3 + genders + chunks.length + (unit.grammar ? 6 : 0) + spots, tag);
       assert.equal(ex.filter((e) => e.type === 'fill').length, unit.grammar ? 6 : 0, tag);
       assert.equal(ex.filter((e) => e.type === 'spot').length, spots, tag);
       const dict = ex.filter((e) => e.type === 'dictation');
@@ -1431,4 +1433,61 @@ test('spotSegments: bracketed hints are shown but not pickable; notSpot forms ne
       }
     }
   }
+});
+
+// ---------------------------------------------------------------- chunks
+test('chunkSentence keeps groups together and fixed expressions whole', () => {
+  assert.deepEqual(Core.chunkSentence("Je voudrais un café, s'il vous plaît."), ['Je voudrais', 'un café,', "s'il vous plaît."]);
+  assert.deepEqual(Core.chunkSentence('Il y a sept jours dans une semaine.'), ['Il y a', 'sept jours', 'dans une semaine.']);
+  assert.deepEqual(Core.chunkSentence('Le bus passe à huit heures et quart.'), ['Le bus', 'passe', 'à huit heures et quart.']);
+  assert.deepEqual(Core.chunkSentence('Elle a vingt et un ans.'), ['Elle', 'a', 'vingt et un ans.']);
+  assert.equal(Core.chunkSentence('Merci beaucoup !'), null, 'under 3 words');
+  assert.equal(Core.chunkSentence('Le chat dort.'), null, "can't cut 'Le | chat'");
+  assert.deepEqual(Core.chunkSentence('Je ne parle pas espagnol.'), ['Je', 'ne parle pas', 'espagnol.']);
+  assert.deepEqual(Core.chunkSentence('Jeudi soir, c\'est possible.'), ['Jeudi soir,', "c'est", 'possible.']);
+  assert.deepEqual(Core.chunkSentence('Je m\'appelle Lucas Martin.'), ['Je', "m'appelle", 'Lucas Martin.']);
+  assert.equal(Core.chunkSentence('Oui, bien sûr.'), null);
+  assert.equal(Core.chunkSentence('Au revoir et merci !'), null, 'no lone « et »');
+});
+
+test('chunkSentence: every course sentence gives 3–4 chunks that rebuild it, never ending on an article', () => {
+  const ARTICLE_END = /(?:^|\s)(?:le|la|les|un|une|des|du|de|au|aux|à|mon|ma|mes|ton|ta|ses|son|sa|notre|votre)$/i;
+  let n = 0;
+  for (const u of DATA.units) {
+    const sents = u.items.map((it) => it.ex.fr)
+      .concat(u.grammar ? u.grammar.sections.flatMap((x) => x.examples || []).map((e) => e[0]) : [])
+      .concat(u.dialogue ? u.dialogue.lines.map((l) => l[1]) : []);
+    for (const s of sents) {
+      const c = Core.chunkSentence(s);
+      if (!c) continue;
+      n++;
+      assert.ok(c.length >= 3 && c.length <= 4, `${s} → ${c.length}`);
+      assert.equal(c.join(' '), Core.tokenize(s).join(' '), s);
+      for (const ch of c) assert.ok(!ARTICLE_END.test(ch), `${s}: chunk "${ch}" ends on a little word`);
+    }
+  }
+  assert.ok(n > 100, `most sentences can be chunked (${n})`);
+});
+
+test('buildLesson: one chunks exercise per unit (if it has a sentence to cut), shuffled, from a different sentence', () => {
+  const byId = new Map(Core.allItems(DATA).map((it) => [it.id, it]));
+  let units = 0;
+  for (const u of DATA.units) {
+    for (const seed of [1, 2, 3, 99]) {
+      const ex = Core.buildLesson(DATA, u.id, Core.mulberry32(seed));
+      const ch = ex.filter((e) => e.type === 'chunks');
+      assert.ok(ch.length <= 1, `${u.id} seed ${seed}`);
+      if (!ch.length) continue;
+      if (seed === 1) units++;
+      const c = ch[0];
+      assert.deepEqual(c.chunks.slice().sort(), Core.chunkSentence(c.fr).slice().sort(), 'same chunks');
+      assert.notEqual(c.chunks.join(' '), Core.chunkSentence(c.fr).join(' '), 'not already in order');
+      assert.ok(c.en && c.audio, 'english and audio');
+      const order = ex[ex.length - 1], dict = ex.find((e) => e.type === 'dictation');
+      assert.notEqual(c.fr, byId.get(order.item).ex.fr);
+      assert.notEqual(c.fr, byId.get(dict.item).ex.fr);
+      assert.equal(ex[ex.length - 2].type, 'chunks', 'chunks just before the word-by-word sentence');
+    }
+  }
+  assert.ok(units >= 22, `most units have one (${units})`);
 });

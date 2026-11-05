@@ -1063,13 +1063,13 @@
       <div class="feedback" id="fb" role="status" aria-live="polite" hidden></div>
       <div class="session-foot" id="foot"><button class="btn primary wide" id="check" disabled>Check</button></div>`;
     const renderers = { fill: exFill, speak: exSpeak, shadow: exSpeak, 'mc-fr-en': exMC, 'mc-en-fr': exMC, listen: exMC, type: exType, match: exMatch, order: exOrder,
-      dictation: exDictation, gender: exGender, spot: exSpot };
+      dictation: exDictation, gender: exGender, spot: exSpot, chunks: exChunks };
     renderers[ex.type](ex);
   }
 
   // Records the outcome, shows feedback and queues one retry for mistakes.
   function answered(ex, correct, info = {}) {
-    if (!ex.retry) session.results.push({ item: ex.item || (ex.pairs && ex.pairs[0]) || `${ex.unit}-d${ex.drill + 1}`, type: ex.type, correct });
+    if (!ex.retry) session.results.push({ item: ex.item || (ex.pairs && ex.pairs[0]) || ex.audio || `${ex.unit}-d${ex.drill + 1}`, type: ex.type, correct });
     if (!correct && !ex.retry && ex.type !== 'match') {
       session.queue.push(Object.assign({}, ex, { retry: true }));
       session.total++;
@@ -1416,6 +1416,49 @@
     $('#check').onclick = check;
     keyHandler = (e) => { if (e.key === 'Enter' && line.children.length) { e.preventDefault(); check(); } };
     if (listen && state.settings.autoplay) later(() => Sound.play(`${it.id}-ex`, it.ex.fr), 250);
+  }
+
+  // ---------- chunks ----------
+  // Put groups of words in order ("Je voudrais" · "un café," · "s'il vous plaît.") — a step before
+  // building a sentence word by word or writing it out.
+  function exChunks(ex) {
+    $('#ex').innerHTML = `
+      <p class="instr">Put the pieces in order</p>
+      <p class="muted small why">Capital letters and punctuation are clues to where each piece goes.</p>
+      <div class="prompt-pic small"><b>${esc(ex.en)}</b>${speakerBtn(ex.audio, 'Hear the sentence')}</div>
+      <div class="answer-line" id="line" lang="fr" aria-label="Your sentence"></div>
+      <div class="bank" id="bank" lang="fr">${ex.chunks.map((c, k) => `<button class="word chunk" data-k="${k}"><kbd>${k + 1}</kbd><span>${fr(c)}</span></button>`).join('')}</div>`;
+    const line = $('#line'), bank = $('#bank');
+    const update = () => { $('#check').disabled = line.children.length < ex.chunks.length; };
+    const add = (w) => {
+      if (!w || w.disabled || w.classList.contains('used')) return;
+      const c = document.createElement('button');
+      c.className = 'word chunk';
+      c.dataset.k = w.dataset.k;
+      c.innerHTML = w.querySelector('span').innerHTML;
+      c.onclick = () => { if (c.disabled) return; line.removeChild(c); w.classList.remove('used'); update(); };
+      w.classList.add('used');
+      line.appendChild(c);
+      Sound.sfx('tap');
+      update();
+    };
+    bank.onclick = (e) => add(e.target.closest('.word'));
+    const check = () => {
+      if (line.children.length < ex.chunks.length || line.classList.contains('right') || line.classList.contains('wrong')) return;
+      const built = $$('.word', line).map((w) => ex.chunks[w.dataset.k]).join(' ');
+      const ok = C.normalize(built) === C.normalize(ex.fr);
+      $$('.word').forEach((w) => (w.disabled = true));
+      line.classList.add(ok ? 'right' : 'wrong');
+      answered(ex, ok, { audio: ex.audio, detail: `<div class="fb-answer">${speakerBtn(ex.audio)}<div><b lang="fr">${fr(ex.fr)}</b><small>${esc(ex.en)}</small></div></div>` });
+    };
+    $('#check').onclick = check;
+    // Number keys pick a piece, Backspace takes the last one back, Enter checks.
+    keyHandler = (e) => {
+      const n = Number(e.key);
+      if (n >= 1 && n <= ex.chunks.length) add($(`#bank .word[data-k="${n - 1}"]`));
+      else if (e.key === 'Backspace' && line.lastElementChild) { e.preventDefault(); line.lastElementChild.click(); }
+      else if (e.key === 'Enter') { e.preventDefault(); check(); }
+    };
   }
 
   // ---------- dictation (dictée) ----------

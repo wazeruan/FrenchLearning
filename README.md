@@ -30,13 +30,16 @@ Pick one way and stick with it, or use **Settings → Export backup / Import bac
   adjectives, avoir and possessives, -er verbs, negation, questions, aller/faire, numbers to 100,
   telling time) and 3 Canadian-life dialogues (airport, grocery store, booking a clinic appointment).
 - **Each unit is a guided sequence:** words → grammar lesson or dialogue → practice.
-- **Ten exercise types:** meaning (FR→EN), translation (EN→FR), listening, spelling (letter tiles,
+- **Eleven exercise types:** meaning (FR→EN), translation (EN→FR), listening, spelling (letter tiles,
   keyboard with hints, or off), matching pairs, sentence building, grammar fill-in-the-blank, plus:
   - **Dictée** — hear an example sentence and write it down (word tiles, or typed with each word marked
     right / accent-only / missing).
   - **Le or la?** — choose the gender of four nouns shown without their article (including « l' » nouns),
     colour-coded the same way everywhere (blue masculine, red feminine).
   - **Find the mistake** (grammar units) — spot the one wrong form in a sentence, then see it corrected.
+  - **Put the pieces in order** — rebuild one of the unit's longer sentences from 3–4 chunks of words that
+    belong together (« Je voudrais » · « un café, » · « s'il vous plaît. »), a step before building it
+    word by word.
   Mistakes come back once at the end of the lesson.
 - **Dialogues** voiced by a Canadian (Amélie, fr_CA) and a French (Thomas) voice: listen first with the
   text blurred, answer comprehension questions, then read along.

@@ -355,7 +355,10 @@
     const dictItem = items.find((it) => it.id !== orderItem.id);
     if (dictItem) singles.push({ type: 'dictation', item: dictItem.id });
     const lesson = singles.slice(0, mid).concat([match], singles.slice(mid));
-    if (!unit.grammar) return lesson.concat([sentence]);
+    // Chunk ordering: the unit's longest other sentence, cut into 3–4 meaningful groups of words.
+    const chunkEx = chunksExercise(unit, [orderItem.ex.fr, dictItem && dictItem.ex.fr], rng);
+    const tail = chunkEx ? [chunkEx, sentence] : [sentence];
+    if (!unit.grammar) return lesson.concat(tail);
     // Grammar units: 6 fill-in-the-blank drills, spread through the second half.
     const drills = shuffle(unit.grammar.drills.map((d, i) => i), rng).slice(0, 6).map((i) => ({
       type: 'fill', unit: unit.id, drill: i, options: shuffle(unit.grammar.drills[i][2], rng),
@@ -369,9 +372,107 @@
     const wrongForms = (i) => unit.grammar.drills[i][2].filter((o) => o !== unit.grammar.drills[i][1] && !(notSpot[i] || []).includes(o));
     const spots = shuffle(unit.grammar.drills.map((d, i) => i).filter((i) => !used.has(i) && spotDrill(unit.grammar.drills[i]) && wrongForms(i).length), rng)
       .slice(0, 2).map((i) => ({ type: 'spot', unit: unit.id, drill: i, wrong: pickOf(wrongForms(i), rng) }));
-    return out.concat(rest.slice(drills.length), spots, [sentence]);
+    return out.concat(rest.slice(drills.length), spots, tail);
   }
   const pickOf = (arr, rng) => arr[Math.floor(rng() * arr.length)];
+
+  // ---------- chunks (sentence building with groups of words) ----------
+  // Words that can't end a chunk, because they belong with the word after them:
+  // "un café", "à Montréal", "sept jours", "un grand pays", "ne mange".
+  const GLUE = new Set(('le la les un une des du de au aux à en ne mon ma mes ton ta tes son sa ses notre votre nos vos ' +
+    'leur leurs ce cet cette ces très pour avec dans sur chez par sans tout tous toute toutes heures dollars euros et ou mais — ' +
+    'grand grande gros grosse petit petite nouveau nouvel nouvelle bon bonne beau bel belle jeune vieux vieil vieille ' +
+    'deux trois quatre cinq six sept huit neuf dix onze douze treize quatorze quinze seize vingt trente quarante ' +
+    'cinquante soixante cent').split(' '));
+  // Words that usually start a chunk with what follows, but may end one: "je voudrais", "où est-ce que".
+  const SOFT = new Set('je tu il elle on nous vous ils elles me te se où quand comment pourquoi quel quelle quels quelles'.split(' '));
+  // Expressions kept in one piece.
+  const FIXED = ["s'il vous plaît", "s'il te plaît", 'il y a', 'bien sûr', 'comment ça va', 'ça va', 'ça vous va',
+    'merci beaucoup', 'au revoir', 'à bientôt', 'à demain', 'pas de problème', 'vous aussi', 'pas plus', "qu'est-ce que", "qu'est-ce qu'", 'est-ce que', "est-ce qu'", 'à côté de',
+    'tout le monde', 'fin de semaine', 'en face de'].map((x) => x.split(' '));
+  const FOLLOW = new Set('pas jamais plus rien sûr beaucoup aussi soir matin après-midi comptant maladie permanent permanente'.split(' '));
+  const LEADING_FIXED = new Set(["qu'est-ce que", "qu'est-ce qu'", 'est-ce que', "est-ce qu'", 'à côté de', 'en face de']);
+  const ENDS = /[.,;:!?»]$/;
+  // Cuts a sentence into 3–4 chunks of words that go together. Returns null when that isn't possible
+  // without breaking a group (or the sentence has fewer than 3 words).
+  function chunkSentence(sentence) {
+    const raw = tokenize(sentence);
+    if (raw.length < 3) return null;
+    const bare = (t) => normalize(t);
+    // Join fixed expressions into single tokens first.
+    const toks = [];
+    for (let i = 0; i < raw.length;) {
+      const f = FIXED.find((ws) => ws.every((w, k) => raw[i + k] !== undefined && bare(raw[i + k]) === w && (k === ws.length - 1 || !ENDS.test(raw[i + k]))));
+      if (f) { toks.push(raw.slice(i, i + f.length).join(' ')); i += f.length; } else toks.push(raw[i++]);
+    }
+    const isNumber = (t) => /^[a-z]+(?:-[a-z]+)+$/.test(bare(t)) && bare(t).split('-').every((p) => GLUE.has(p.replace(/s$/, '')) || ['et', 'un', 'une'].includes(p));
+    // "et" / "moins" inside a number or time: vingt et un, huit heures et quart, neuf heures moins le quart.
+    const inNumber = (t, next, prev) => (bare(t) === 'et' || bare(t) === 'moins') && next !== undefined && prev !== undefined &&
+      (GLUE.has(bare(prev)) || /^heures?$/.test(bare(prev))) &&
+      (GLUE.has(bare(next).replace(/[.,!?]$/, '')) || /^(un|une|quart|demie)\b/.test(bare(next)) || bare(next) === 'le');
+    // glue(k): the k-th token can't end a chunk.
+    const glue = (k) => { const t = toks[k]; return !ENDS.test(t) && (GLUE.has(bare(t)) || /['’]$/.test(t) || isNumber(t) || LEADING_FIXED.has(bare(t)) || inNumber(t, toks[k + 1], toks[k - 1])); };
+    const leads = (k) => glue(k) || (!ENDS.test(toks[k]) && SOFT.has(bare(toks[k])));
+    // A capitalised word after a capitalised name or title: "Lucas Martin", "monsieur Martin".
+    const nameAfter = (k) => k > 0 && /^\p{Lu}/u.test(toks[k]) && !ENDS.test(toks[k - 1]) &&
+      (/^\p{Lu}/u.test(toks[k - 1]) && k > 1 || /^(monsieur|madame|docteur)$/.test(bare(toks[k - 1])));
+    const follows = (k) => FOLLOW.has(bare(toks[k]).replace(/[.,!?]$/, '')) || nameAfter(k);
+    const groups = [];
+    let cur = [];
+    toks.forEach((t, i) => {
+      const prev = groups[groups.length - 1];
+      // Joins the chunk before: "ne parle | pas" → "ne parle pas", "Vendredi | soir," → "Vendredi soir,".
+      if (!cur.length && prev && !ENDS.test(toks[prev[prev.length - 1]]) && follows(i)) {
+        prev.push(i);
+        return;
+      }
+      cur.push(i);
+      if (i === toks.length - 1 || !leads(i) || (cur.length >= 4 && !glue(i))) { groups.push(cur); cur = []; }
+    });
+    const closed = (g) => ENDS.test(toks[g[g.length - 1]]);
+    // Too many chunks: merge the shortest neighbouring pair (preferring not to cross punctuation) until 4.
+    while (groups.length > 4) {
+      let best = -1, bestCost = Infinity;
+      for (let i = 0; i + 1 < groups.length; i++) {
+        const cost = groups[i].length + groups[i + 1].length + (closed(groups[i]) ? 10 : 0);
+        if (cost < bestCost) { best = i; bestCost = cost; }
+      }
+      groups.splice(best, 2, groups[best].concat(groups[best + 1]));
+    }
+    // Too few: split a chunk where a word may end one, nearest its middle, until there are 3.
+    while (groups.length < 3) {
+      let pick = null;
+      groups.forEach((g, i) => {
+        for (let c = 1; c < g.length; c++) {
+          if (glue(g[c - 1]) || follows(g[c])) continue;
+          const score = g.length * 10 - Math.abs(g.length / 2 - c);
+          if (!pick || score > pick.score) pick = { i, c, score };
+        }
+      });
+      if (!pick) return null;
+      const g = groups[pick.i];
+      groups.splice(pick.i, 1, g.slice(0, pick.c), g.slice(pick.c));
+    }
+    return groups.map((g) => g.map((k) => toks[k]).join(' '));
+  }
+  // Sentences of a unit with their English and audio clip: examples, grammar examples, dialogue lines.
+  function unitSentences(unit) {
+    const out = unit.items.map((it) => ({ fr: it.ex.fr, en: it.ex.en, audio: `${it.id}-ex` }));
+    if (unit.grammar) unit.grammar.sections.flatMap((x) => x.examples || []).forEach(([f, e], i) => out.push({ fr: f, en: e, audio: `${unit.id}-x${i + 1}` }));
+    if (unit.dialogue) unit.dialogue.lines.forEach(([, f, e], i) => out.push({ fr: f, en: e, audio: `${unit.id}-l${i + 1}` }));
+    return out;
+  }
+  // A chunk-ordering exercise on one of the unit's longest sentences (not one in `avoid`), or null.
+  function chunksExercise(unit, avoid = [], rng = Math.random) {
+    const pool = unitSentences(unit).filter((x) => !avoid.includes(x.fr) && chunkSentence(x.fr));
+    if (!pool.length) return null;
+    const longest = Math.max(...pool.map((x) => tokenize(x.fr).length));
+    const s = pickOf(pool.filter((x) => tokenize(x.fr).length >= Math.min(longest, 6) || tokenize(x.fr).length === longest), rng);
+    const chunks = chunkSentence(s.fr);
+    let shuffled = shuffle(chunks, rng);
+    if (shuffled.join(' ') === chunks.join(' ')) shuffled = chunks.slice(1).concat(chunks[0]); // never already in order
+    return { type: 'chunks', unit: unit.id, fr: s.fr, en: s.en, audio: s.audio, chunks: shuffled };
+  }
 
   // ---------- gender (le / la) ----------
   // 'm' | 'f' for a noun shown with its article (or "l'" plus a note saying which), else null.
@@ -603,7 +704,7 @@
     reviewAnswer, dueWords, weakestWords, masteredCount,
     normalize, checkAnswer, tokenize, frenchSound, pronunciationScore, pronunciationLevel, letterSlots, spellingTiles, revealPrefix, asChoice,
     mulberry32, shuffle, allItems, findItem, buildLesson, buildReview,
-    genderOf, bareNoun, genderPick, checkDictation, spotDrill, spotSegments, roleplayTurns,
+    genderOf, bareNoun, genderPick, checkDictation, spotDrill, spotSegments, roleplayTurns, chunkSentence, chunksExercise,
     completedUnits, unitUnlocked, stageProgress, starsFor, evaluateProgress, completeLesson, completeReview, completeListening, drillSpeech,
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = Core;

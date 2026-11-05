@@ -689,6 +689,8 @@ label.btn { cursor: pointer; }
 .spot-word.wrong { border-color: var(--red); background: var(--red-soft); }
 .spot-word.wrong-form { border-color: var(--green); background: var(--green-soft); }
 .spot-word s { color: var(--red); }
+.word.chunk { display: inline-flex; align-items: center; gap: 8px; }
+.word.chunk kbd { display: grid; place-items: center; width: 20px; height: 20px; border-radius: 6px; border: 1.5px solid var(--line); color: var(--muted); font: 700 .7rem var(--sans); }
 .rp-turn { margin-top: 16px; }
 .rp-turn .q-fr { margin-bottom: 8px; }
 .spot-punct { align-self: center; font-family: var(--serif); font-size: 1.35rem; margin-left: -4px; }
