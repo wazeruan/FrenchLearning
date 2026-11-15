@@ -44,7 +44,7 @@ move it with **Settings → Export backup / Import backup**.
 
 ```bash
 node --test                        # unit tests (js/core.js and the course data)
-node scripts/generate-audio.mjs    # audio for new or edited lines (Kyutai TTS, offline; needs uv; --force redoes all)
+node scripts/generate-audio.mjs    # audio for new or edited lines (offline: macOS Amélie for short words, Kyutai TTS for the rest; --force redoes all)
 node scripts/generate-art.mjs      # redraw the SVG covers
 ./scripts/take-screenshots.sh      # README screenshots from demo progress (macOS, after build-mac-app.sh)
 ```

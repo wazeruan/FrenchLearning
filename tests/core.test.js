@@ -1109,7 +1109,7 @@ test('data: every audio clip exists and is listed in the manifest; every cover S
 
 test('data: manifest text for drills / dialogue lines matches drillSpeech / line text', () => {
   const manifest = JSON.parse(fs.readFileSync(path.join(ROOT, 'assets/audio/manifest.json'), 'utf8'));
-  const text = (id) => String(manifest[id]).split('|').slice(2).join('|');
+  const text = (id) => String(manifest[id]).split('|').slice(String(manifest[id]).startsWith('say:') ? 1 : 2).join('|'); // say:<voice>|text or kyutai:<voice>|<temp>|text
   const bad = [];
   for (const u of GRAMMAR) u.grammar.drills.forEach((d, i) => { if (text(`${u.id}-d${i + 1}`) !== Core.drillSpeech(d)) bad.push(`${u.id}-d${i + 1}`); });
   for (const u of DIALOGUE) u.dialogue.lines.forEach((l, i) => { if (text(`${u.id}-l${i + 1}`) !== l[1]) bad.push(`${u.id}-l${i + 1}`); });
