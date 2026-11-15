@@ -1798,7 +1798,7 @@
           <button class="btn danger-ghost" id="reset">Reset progress</button>
         </div>
       </section>
-      <p class="muted small center">Audio: macOS “Thomas” French voice · Illustrations drawn for this app</p>`;
+      <p class="muted small center">Audio: Kyutai TTS, generated offline (voices from CML-TTS, CC BY 4.0) · Illustrations drawn for this app</p>`;
     $('#name').onchange = (e) => { s.name = e.target.value.trim(); save(); toast('✓', 'Saved'); };
     $$('.goal-opt').forEach((b) => (b.onclick = () => { s.dailyGoal = Number(b.dataset.goal); save(); settings(); toast('🎯', `Daily goal: ${s.dailyGoal} XP`); }));
     $$('.switch').forEach((c) => (c.onchange = () => { s[c.dataset.key] = c.checked; save(); }));

@@ -172,7 +172,8 @@
   const SND = (unit, lesson) => Object.assign(unit, { kind: 'sounds', grammar: lesson });
   const num = (n) => ({ num: String(n) });
   const clock = (t) => ({ clock: t });
-  const CA = 'Amélie'; // Canadian French voice (fr_CA)
+  // Voices are roles; scripts/generate-audio.mjs maps each to a Kyutai TTS voice.
+  const WOMAN = 'femme', MAN = 'homme';
 
   const a1 = [
     // ---------- pronunciation: the vowel sounds and how each is spelled ----------
@@ -418,7 +419,7 @@
         I('d01-08', 'bonne chance', 'good luck', e('🍀'), 'Bonne chance pour le test !', 'Good luck on the test!'),
       ]), {
       scene: 'Montréal–Trudeau airport. A border services officer welcomes a new permanent resident.',
-      speakers: { A: ['Agente', CA], B: ['Voyageur', 'Thomas'] },
+      speakers: { A: ['Agente', WOMAN], B: ['Voyageur', MAN] },
       lines: [
         ['A', "Bonjour. Votre passeport, s'il vous plaît.", 'Hello. Your passport, please.'],
         ['B', 'Bonjour. Voici mon passeport.', 'Hello. Here is my passport.'],
@@ -521,7 +522,7 @@
         I('d02-08', 'bonne soirée', 'have a good evening', e('🌙'), 'Merci, bonne soirée !', 'Thanks, have a good evening!'),
       ]), {
       scene: 'A grocery store checkout in Gatineau. A customer pays for their groceries.',
-      speakers: { A: ['Caissière', CA], B: ['Client', 'Thomas'] },
+      speakers: { A: ['Caissière', WOMAN], B: ['Client', MAN] },
       lines: [
         ['A', 'Bonjour ! Vous avez trouvé tout ce que vous cherchiez ?', 'Hi! Did you find everything you were looking for?'],
         ['B', 'Oui, merci. Est-ce que vous avez des sacs ?', 'Yes, thanks. Do you have bags?'],
@@ -660,7 +661,7 @@
         I('d03-08', 'à jeudi', 'see you Thursday', e('📆'), 'Merci, à jeudi !', 'Thanks, see you Thursday!'),
       ]), {
       scene: 'Lucas calls a medical clinic in Montreal to book an appointment with a doctor.',
-      speakers: { A: ['Réceptionniste', CA], B: ['Lucas', 'Thomas'] },
+      speakers: { A: ['Réceptionniste', WOMAN], B: ['Lucas', MAN] },
       lines: [
         ['A', 'Clinique Saint-Laurent, bonjour !', 'Saint-Laurent Clinic, hello!'],
         ['B', 'Bonjour, je voudrais prendre rendez-vous avec un médecin.', "Hello, I'd like to make an appointment with a doctor."],
@@ -739,7 +740,7 @@
     { id: 'a1-m4', after: 26, title: 'Niveau A1 ✓', en: 'Stage 1 complete (≈ NCLC 2–3). On to A2!' },
   ];
 
-  const data = { units: ordered, stages, milestones, voice: 'Thomas', voiceCA: CA };
+  const data = { units: ordered, stages, milestones, voice: WOMAN };
   if (typeof module !== 'undefined' && module.exports) module.exports = data;
   else root.FR_DATA = data;
 })(this);

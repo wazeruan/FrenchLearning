@@ -1000,8 +1000,8 @@ test('data: stages cover every unit exactly once, in order; every unit has its s
     assert.equal(DATA.units.find((u) => u.id === id).stage, st.id, id);
   }
   assert.ok(DATA.stages.some((st) => st.id === 'a1'));
-  assert.equal(typeof DATA.voiceCA, 'string');
-  assert.ok(DATA.voiceCA.length > 0);
+  assert.equal(typeof DATA.voice, 'string');
+  assert.ok(DATA.voice.length > 0);
   for (const u of DATA.units) assert.ok([undefined, 'grammar', 'dialogue', 'sounds'].includes(u.kind), `${u.id} kind ${u.kind}`);
   assert.ok(GRAMMAR.length > 0 && DIALOGUE.length > 0);
 });
