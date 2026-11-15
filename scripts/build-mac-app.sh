@@ -12,7 +12,7 @@ mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources/web"
 echo "→ compiling"
 xcrun swiftc -O -swift-version 5 -target "$(uname -m)-apple-macos13.0" \
   macos/LocalServer.swift macos/main.swift \
-  -framework Cocoa -framework WebKit -framework Network \
+  -framework Cocoa -framework WebKit -framework Network -framework UserNotifications -framework ServiceManagement \
   -o "$APP/Contents/MacOS/CocoFrench"
 cp macos/Info.plist "$APP/Contents/Info.plist"
 

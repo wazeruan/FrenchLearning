@@ -1563,3 +1563,64 @@ test('sounds unit: every drill hides a vowel spelling inside a word, with distin
     assert.equal(ex.filter((e) => e.type === 'spot').length, 0);
   }
 });
+
+// ---------------------------------------------------------------- streak freezes
+test('a freeze is earned on every 7th streak day, up to the maximum', () => {
+  const s = fresh();
+  let earned = 0;
+  for (let d = 1; d <= 28; d++) if (Core.recordActivity(s, { xp: 1, kind: 'lesson' }, at(2026, 10, d)).freezeEarned) earned++;
+  assert.equal(s.streak.current, 28);
+  assert.equal(s.freezes, Core.MAX_FREEZES);
+  assert.equal(earned, Core.MAX_FREEZES, 'no freeze is earned once the maximum is held');
+});
+
+test('a freeze covers one missed day and is used up', () => {
+  const s = fresh();
+  for (let d = 1; d <= 7; d++) Core.recordActivity(s, { xp: 1, kind: 'lesson' }, at(2026, 10, d));
+  assert.equal(s.freezes, 1);
+  // The 8th is missed: on the 9th the streak still shows, flagged as at risk.
+  assert.deepEqual(Core.streakStatus(s, '2026-10-09'), { streak: 7, freezes: 1, atRisk: 1 });
+  const r = Core.recordActivity(s, { xp: 1, kind: 'lesson' }, at(2026, 10, 9));
+  assert.equal(r.freezesUsed, 1);
+  assert.equal(s.streak.current, 8);
+  assert.equal(s.freezes, 0);
+  assert.deepEqual(s.frozen, { '2026-10-08': true });
+  // No freeze left: the next missed day breaks the streak.
+  assert.equal(Core.currentStreak(s, '2026-10-11'), 0);
+  Core.recordActivity(s, { xp: 1, kind: 'lesson' }, at(2026, 10, 11));
+  assert.equal(s.streak.current, 1);
+  assert.equal(s.streak.best, 8);
+});
+
+test('more missed days than freezes breaks the streak and keeps the freezes', () => {
+  const s = fresh();
+  for (let d = 1; d <= 7; d++) Core.recordActivity(s, { xp: 1, kind: 'lesson' }, at(2026, 10, d));
+  assert.equal(Core.currentStreak(s, '2026-10-10'), 0); // the 8th and 9th missed, one freeze
+  Core.recordActivity(s, { xp: 1, kind: 'lesson' }, at(2026, 10, 10));
+  assert.equal(s.streak.current, 1);
+  assert.equal(s.freezes, 1);
+  assert.deepEqual(s.frozen, {});
+});
+
+test('migrate keeps freezes, frozen days, reminder settings and spoken counts, and sanitises bad ones', () => {
+  const s = Core.migrate({ freezes: 9, frozen: { '2026-10-08': true, nope: true, '2026-10-09': 'x' },
+    settings: { reminder: false, reminderTime: '07:30', menuBar: false },
+    daily: { '2026-10-01': { xp: 3, spoken: 2 } } });
+  assert.equal(s.freezes, Core.MAX_FREEZES);
+  assert.deepEqual(s.frozen, { '2026-10-08': true });
+  assert.equal(s.settings.reminder, false);
+  assert.equal(s.settings.reminderTime, '07:30');
+  assert.equal(s.settings.menuBar, false);
+  assert.equal(s.daily['2026-10-01'].spoken, 2);
+  assert.equal(Core.migrate({ settings: { reminderTime: '25:00' } }).settings.reminderTime, '19:00');
+  assert.equal(Core.migrate({ freezes: -1 }).freezes, 0);
+});
+
+test('wordOfDay is a learned word that changes from day to day, or the first word before any lesson', () => {
+  const s = fresh();
+  assert.equal(Core.wordOfDay(s, DATA, '2026-11-15').id, DATA.units[0].items[0].id);
+  Core.completeLesson(s, DATA, DATA.units[1].id, allCorrect(DATA.units[1]), at(2026, 10, 1));
+  const a = Core.wordOfDay(s, DATA, '2026-11-15'), b = Core.wordOfDay(s, DATA, '2026-11-16');
+  assert.ok(s.words[a.id] && s.words[b.id]);
+  assert.notEqual(a.id, b.id);
+});

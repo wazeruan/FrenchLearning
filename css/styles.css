@@ -77,9 +77,11 @@ button { cursor: pointer; }
   transition: background .2s, color .2s;
 }
 .sidebar a:not(.brand):hover { background: var(--surface-2); color: var(--ink); }
-.sidebar .ti { font-size: 1.2rem; line-height: 1; filter: grayscale(.6); opacity: .8; transition: .2s; }
+.sidebar .ti { display: grid; place-items: center; line-height: 1; opacity: .8; transition: .2s; }
+.sidebar .ti svg { display: block; width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.side-foot { display: none; } /* today's goal under the sidebar: Mac app only (css/mac.css) */
 .sidebar a.active { background: var(--navy-soft); color: var(--navy); }
-.sidebar a.active .ti { filter: none; opacity: 1; }
+.sidebar a.active .ti { opacity: 1; }
 .sidebar .badge {
   margin-left: auto; min-width: 20px; height: 20px; padding: 0 6px;
   border-radius: 10px; background: var(--red); color: #fff; font-size: .72rem; line-height: 20px; text-align: center;
@@ -474,7 +476,7 @@ label.btn { cursor: pointer; }
   }
   .sidebar .brand { display: none; }
   .sidebar a:not(.brand) { flex: 1; flex-direction: column; gap: 1px; padding: 7px 4px; border-radius: 16px; font-size: .75rem; }
-  .sidebar .ti { font-size: 1.25rem; line-height: 1.2; }
+  .sidebar .ti svg { width: 24px; height: 24px; }
   .sidebar .badge { position: absolute; top: 3px; right: calc(50% - 26px); margin: 0; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; font-size: .68rem; line-height: 18px; }
   .topbar { padding: calc(12px + env(safe-area-inset-top)) 16px 12px; background: var(--bg); backdrop-filter: none; -webkit-backdrop-filter: none; }
   main { padding: 4px 16px 24px; }
@@ -705,3 +707,14 @@ label.btn { cursor: pointer; }
 .snapshot #toasts { display: none; } /* README screenshots: no passing notifications */
 .steps .na a { opacity: .6; }
 .steps .na .check { border-style: dashed; }
+
+/* Streak freezes, the "today" button's key hint, Mac settings */
+.chip.freeze { gap: 3px; }
+.freeze-tag { margin-left: 8px; padding: 1px 8px; border-radius: 999px; background: var(--navy-soft); font-size: .8rem; font-weight: 600; cursor: help; }
+.week .frozen i { background: var(--navy-soft); font-style: normal; font-size: .8rem; }
+.btn kbd { margin-left: 8px; padding: 1px 6px; border-radius: 6px; border: 1.5px solid color-mix(in srgb, currentColor 35%, transparent); font: 700 .75rem var(--sans); opacity: .8; }
+@media (pointer: coarse) { .btn kbd { display: none; } }
+.setting input[type=time] { padding: 8px 12px; border-radius: 10px; border: 1.5px solid var(--line); background: var(--surface-2); }
+.setting input[type=time]:disabled { opacity: .45; }
+.note-warn { margin: 4px 0 8px; padding: 10px 12px; border-radius: 12px; background: var(--gold-soft); }
+.note-warn .link-btn { margin-top: 0; padding: 0; }

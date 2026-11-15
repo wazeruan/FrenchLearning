@@ -18,6 +18,10 @@
     { xp: 30, label: 'Sérieux', en: 'Serious' },
     { xp: 50, label: 'Intense', en: 'Intense' },
   ];
+  // Streak freezes: one is earned at every 7th day of a streak (kept up to 2); each covers one missed day.
+  const FREEZE_EVERY = 7;
+  const MAX_FREEZES = 2;
+  const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
 
   // ---------- dates (local calendar days as YYYY-MM-DD) ----------
   const pad = (n) => String(n).padStart(2, '0');
@@ -42,10 +46,13 @@
     return {
       version: 1,
       createdAt: dayKey(),
-      settings: { name: '', dailyGoal: 20, autoplay: true, sfx: true, slowAudio: false, unlockAll: false, theme: 'auto', typing: 'tiles', speaking: true },
+      settings: { name: '', dailyGoal: 20, autoplay: true, sfx: true, slowAudio: false, unlockAll: false, theme: 'auto', typing: 'tiles', speaking: true,
+        reminder: true, reminderTime: '19:00', menuBar: true }, // Mac app: daily notification, menu bar item
       xp: 0,
       daily: {},          // day -> { xp, lessons, reviews }
       streak: { current: 0, best: 0, lastDay: null },
+      freezes: 0,         // streak freezes in hand
+      frozen: {},         // day -> true: a missed day a freeze covered
       units: {},          // unitId -> { completed, bestScore, stars, plays }
       words: {},          // itemId -> { box, due, seen, correct, wrong }
       stats: { lessons: 0, reviews: 0, perfect: 0, listenCorrect: 0, typedCorrect: 0, totalCorrect: 0, totalAnswered: 0, goalsHit: 0, earlyBird: 0, nightOwl: 0, spokenGood: 0 },
@@ -64,9 +71,12 @@
     const rs = isObj(raw.settings) ? raw.settings : {};
     s.settings.name = typeof rs.name === 'string' ? rs.name.slice(0, 24) : '';
     s.settings.dailyGoal = GOALS.some((g) => g.xp === rs.dailyGoal) ? rs.dailyGoal : s.settings.dailyGoal;
-    for (const k of ['autoplay', 'sfx', 'slowAudio', 'unlockAll', 'speaking']) if (typeof rs[k] === 'boolean') s.settings[k] = rs[k];
+    for (const k of ['autoplay', 'sfx', 'slowAudio', 'unlockAll', 'speaking', 'reminder', 'menuBar']) if (typeof rs[k] === 'boolean') s.settings[k] = rs[k];
     if (['auto', 'light', 'dark'].includes(rs.theme)) s.settings.theme = rs.theme;
     if (TYPING_MODES.includes(rs.typing)) s.settings.typing = rs.typing;
+    if (typeof rs.reminderTime === 'string' && TIME_RE.test(rs.reminderTime)) s.settings.reminderTime = rs.reminderTime;
+    s.freezes = Math.min(MAX_FREEZES, Math.round(num(raw.freezes)));
+    if (isObj(raw.frozen)) for (const k of Object.keys(raw.frozen)) if (day(k) && raw.frozen[k] === true) s.frozen[k] = true;
     s.createdAt = day(raw.createdAt, s.createdAt);
     s.xp = num(raw.xp);
     if (isObj(raw.stats)) for (const k of Object.keys(s.stats)) s.stats[k] = num(raw.stats[k]);
@@ -74,7 +84,9 @@
       s.streak = { current: num(raw.streak.current), best: num(raw.streak.best), lastDay: day(raw.streak.lastDay) };
     }
     if (isObj(raw.daily)) for (const [k, v] of Object.entries(raw.daily)) {
-      if (day(k) && isObj(v)) s.daily[k] = { xp: num(v.xp), lessons: num(v.lessons), reviews: num(v.reviews), minutes: num(v.minutes), listening: num(v.listening) };
+      if (!day(k) || !isObj(v)) continue;
+      s.daily[k] = { xp: num(v.xp), lessons: num(v.lessons), reviews: num(v.reviews), minutes: num(v.minutes), listening: num(v.listening) };
+      if (num(v.spoken)) s.daily[k].spoken = num(v.spoken); // pronunciation attempts (today's speaking step)
     }
     if (isObj(raw.units)) for (const [k, v] of Object.entries(raw.units)) {
       if (isObj(v)) s.units[k] = { completed: v.completed === true, bestScore: Math.min(1, num(v.bestScore)), stars: Math.min(3, num(v.stars)), plays: num(v.plays) };
@@ -101,12 +113,18 @@
   function todayXp(state, today = dayKey()) {
     return (state.daily[today] && state.daily[today].xp) || 0;
   }
-  // Streak as it should be displayed today: broken if the last active day is before yesterday.
+  // Streak as it should be displayed today: broken if more days were missed than there are freezes to cover them.
   function currentStreak(state, today = dayKey()) {
-    const last = state.streak.lastDay;
-    if (!last) return 0;
+    return streakStatus(state, today).streak;
+  }
+  // { streak, freezes, atRisk: days missed so far that freezes will cover if you study today }.
+  function streakStatus(state, today = dayKey()) {
+    const last = state.streak.lastDay, freezes = state.freezes || 0;
+    if (!last) return { streak: 0, freezes, atRisk: 0 };
     const gap = diffDays(last, today);
-    return gap >= 0 && gap <= 1 ? state.streak.current : 0;
+    const missed = Math.max(0, gap - 1);
+    const alive = gap >= 0 && missed <= freezes;
+    return { streak: alive ? state.streak.current : 0, freezes, atRisk: alive ? missed : 0 };
   }
   // Adds XP for an activity and updates daily log, streak and goal stats. Returns { goalReachedNow }.
   // minutes: time spent on the activity (capped so a forgotten open tab doesn't count as study).
@@ -122,9 +140,21 @@
     state.xp += xp;
 
     const last = state.streak.lastDay;
+    let freezeEarned = false, freezesUsed = 0;
     if (last !== today) {
-      state.streak.current = last && diffDays(last, today) === 1 ? state.streak.current + 1 : 1;
+      const missed = last ? diffDays(last, today) - 1 : -1;
+      if (missed >= 0 && missed <= (state.freezes || 0)) {
+        // Missed days are covered by freezes: the streak goes on.
+        for (let i = 1; i <= missed; i++) state.frozen[addDays(last, i)] = true;
+        state.freezes = (state.freezes || 0) - missed;
+        freezesUsed = missed;
+        state.streak.current++;
+      } else state.streak.current = 1;
       state.streak.lastDay = today;
+      if (state.streak.current % FREEZE_EVERY === 0 && (state.freezes || 0) < MAX_FREEZES) {
+        state.freezes = (state.freezes || 0) + 1;
+        freezeEarned = true;
+      }
     }
     state.streak.best = Math.max(state.streak.best, state.streak.current);
 
@@ -135,7 +165,7 @@
     const goal = state.settings.dailyGoal;
     const goalReachedNow = before < goal && day.xp >= goal;
     if (goalReachedNow) state.stats.goalsHit++;
-    return { goalReachedNow };
+    return { goalReachedNow, freezeEarned, freezesUsed };
   }
 
   // ---------- spaced repetition ----------
@@ -167,6 +197,12 @@
       .sort((a, b) => a[1].box - b[1].box || b[1].wrong - a[1].wrong)
       .slice(0, n)
       .map(([id]) => id);
+  }
+  // A word to show each day: one you've learned (changes daily), or the course's first word before that.
+  function wordOfDay(state, data, today = dayKey()) {
+    const ids = Object.keys(state.words).sort();
+    const n = Math.abs(diffDays('2026-01-01', today));
+    return (ids.length && findItem(data, ids[n % ids.length])) || findItem(data, data.units[0].items[0].id);
   }
   function masteredCount(state) {
     return Object.values(state.words).filter((w) => w.box >= 4).length;
@@ -663,9 +699,9 @@
     state.stats.lessons++;
     if (perfect) state.stats.perfect++;
 
-    const { goalReachedNow } = recordActivity(state, { xp, kind: 'lesson', minutes }, now);
+    const act = recordActivity(state, { xp, kind: 'lesson', minutes }, now);
     const unlocked = evaluateProgress(state, data, now);
-    return { xp, correct, total: results.length, score, perfect, stars: starsFor(score), firstCompletion: !wasCompleted, goalReachedNow, ...unlocked };
+    return { xp, correct, total: results.length, score, perfect, stars: starsFor(score), firstCompletion: !wasCompleted, ...act, ...unlocked };
   }
   function completeReview(state, data, results, now = new Date(), minutes = 0) {
     const today = dayKey(now);
@@ -674,9 +710,9 @@
     const correct = results.filter((r) => r.correct).length;
     const xp = XP.reviewBase + correct * XP.perCorrect;
     state.stats.reviews++;
-    const { goalReachedNow } = recordActivity(state, { xp, kind: 'review', minutes }, now);
+    const act = recordActivity(state, { xp, kind: 'review', minutes }, now);
     const unlocked = evaluateProgress(state, data, now);
-    return { xp, correct, total: results.length, score: results.length ? correct / results.length : 0, goalReachedNow, ...unlocked };
+    return { xp, correct, total: results.length, score: results.length ? correct / results.length : 0, ...act, ...unlocked };
   }
   // Dialogue comprehension questions: listening practice, 1 XP per correct answer + 2 for finishing.
   function completeListening(state, data, { correct, total }, now = new Date(), minutes = 0) {
@@ -684,9 +720,9 @@
     state.stats.totalAnswered += total;
     state.stats.totalCorrect += correct;
     const xp = 2 + correct;
-    const { goalReachedNow } = recordActivity(state, { xp, kind: 'listening', minutes }, now);
+    const act = recordActivity(state, { xp, kind: 'listening', minutes }, now);
     const unlocked = evaluateProgress(state, data, now);
-    return { xp, goalReachedNow, ...unlocked };
+    return { xp, ...act, ...unlocked };
   }
   function tallyAnswers(state, results) {
     for (const r of results) {
@@ -746,7 +782,7 @@
   const Core = {
     STORAGE_KEY, XP, INTERVALS, LEVELS, GOALS, TYPING_MODES, ACHIEVEMENTS,
     dayKey, addDays, diffDays, defaultState, migrate,
-    levelFor, todayXp, currentStreak, recordActivity,
+    levelFor, todayXp, currentStreak, streakStatus, recordActivity, FREEZE_EVERY, MAX_FREEZES, wordOfDay,
     reviewAnswer, dueWords, weakestWords, masteredCount,
     normalize, checkAnswer, tokenize, frenchSound, pronunciationScore, pronunciationLevel, letterSlots, spellingTiles, revealPrefix, asChoice,
     mulberry32, shuffle, allItems, findItem, buildLesson, buildReview,

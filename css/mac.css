@@ -1,0 +1,267 @@
+/* Coco · French on the Mac: a desktop look for the native app (macos/main.swift).
+   Everything here is scoped to html.mac, which js/app.js sets only inside the Mac app, so the browser
+   and Android layouts in styles.css are untouched. html.vibrant is added by the app when the window
+   draws a translucent macOS sidebar behind the page. */
+
+/* ---------- palette: white content, tinted panels, no drop shadows ---------- */
+html.mac {
+  --bg: #FFFFFF; --surface: #FFFFFF; --surface-2: #EFEDE8; --card: #F7F6F3; --line: #E4E1DB;
+  --side: #F1EFEA; --hover: rgba(0, 0, 0, .05); --select: rgba(0, 0, 0, .08);
+  --shadow: none; --radius: 12px; --titlebar: 52px; --sidebar: 216px;
+  --spring: cubic-bezier(.3, 1.4, .5, 1); --ease: cubic-bezier(.2, .8, .2, 1);
+  font-size: 14px;
+}
+@media (prefers-color-scheme: dark) {
+  html.mac:not([data-theme="light"]) {
+    --bg: #1D1D1F; --surface: #262629; --surface-2: #343438; --card: #28282B; --line: #3A3A3E; --ink: #F2F1EE; --muted: #9A99A1;
+    --side: #252528; --hover: rgba(255, 255, 255, .07); --select: rgba(255, 255, 255, .11);
+  }
+}
+html.mac[data-theme="dark"] {
+  --bg: #1D1D1F; --surface: #262629; --surface-2: #343438; --card: #28282B; --line: #3A3A3E; --ink: #F2F1EE; --muted: #9A99A1;
+  --side: #252528; --hover: rgba(255, 255, 255, .07); --select: rgba(255, 255, 255, .11);
+}
+
+/* ---------- desktop behaviour ---------- */
+html.mac, html.mac body { height: 100%; overflow: hidden; }
+html.mac body { font-size: 1rem; padding-left: 0; min-width: 0; background: var(--side); cursor: default; -webkit-user-select: none; user-select: none; }
+html.mac.vibrant, html.mac.vibrant body { background: transparent; }
+html.mac a, html.mac button, html.mac label, html.mac select, html.mac .setting, html.mac .toggle-chip { cursor: default; }
+html.mac a, html.mac img { -webkit-user-drag: none; }
+html.mac input[type=text], html.mac #answer { -webkit-user-select: text; user-select: text; cursor: text; }
+/* French you may want to copy stays selectable. */
+html.mac .fr-word, html.mac .ex-fr, html.mac .l-fr, html.mac .gtable, html.mac .tip, html.mac .fb-answer, html.mac .fill-sentence { -webkit-user-select: text; user-select: text; cursor: auto; }
+html.mac :focus-visible { outline: 3px solid color-mix(in srgb, var(--navy) 75%, transparent); outline-offset: 1px; border-radius: 8px; }
+html.mac main:focus-visible { outline: none; } /* the page itself takes focus after navigation */
+html.mac h1, html.mac h2, html.mac h3, html.mac .brand, html.mac .instr, html.mac .bubble b, html.mac .milestone b,
+html.mac .goal-opt b, html.mac .stage-head b, html.mac .stage-level, html.mac .big-num, html.mac .level-badge { font-family: var(--sans); letter-spacing: -.015em; }
+html.mac h3 { font-size: 1.07rem; font-weight: 650; }
+
+/* ---------- window layout: fixed sidebar, the content pane scrolls ---------- */
+html.mac .sidebar {
+  width: var(--sidebar); padding: var(--titlebar) 10px 12px; gap: 2px; background: transparent; border-right: 0;
+  transition: transform .38s var(--ease), opacity .25s;
+}
+html.mac .shell {
+  position: fixed; top: 0; right: 0; bottom: 0; left: var(--sidebar); overflow-y: auto; overscroll-behavior: contain;
+  background: var(--bg); box-shadow: -1px 0 0 var(--line); transition: left .38s var(--ease);
+}
+html.mac body.in-session .sidebar { display: flex; transform: translateX(-30%); opacity: 0; pointer-events: none; visibility: hidden; transition: transform .38s var(--ease), opacity .25s, visibility 0s .38s; } /* hidden from the keyboard and VoiceOver once it has slid away */
+html.mac body.in-session .shell { left: 0; }
+html.mac .topbar {
+  height: var(--titlebar); max-width: none; margin: 0; padding: 0 18px;
+  background: color-mix(in srgb, var(--bg) 78%, transparent); backdrop-filter: saturate(1.6) blur(18px); -webkit-backdrop-filter: saturate(1.6) blur(18px);
+}
+html.mac body.in-session .topbar { max-width: none; }
+html.mac main { max-width: 760px; padding: 4px 32px 56px; animation: none; }
+html.mac body.in-session main { max-width: 680px; }
+html.mac .shell::-webkit-scrollbar { width: 0; }
+
+/* ---------- sidebar: source list with a sliding selection ---------- */
+html.mac .brand { height: 34px; margin: 0 8px 12px; font-size: 1.07rem; font-weight: 650; }
+html.mac .brand img { width: 26px; height: 26px; }
+html.mac .sidebar::before {
+  content: ""; position: absolute; left: 10px; right: 10px; height: 32px; border-radius: 8px; background: var(--select);
+  top: calc(var(--titlebar) + 46px + var(--tab, 0) * 34px); transition: top .32s var(--spring);
+}
+html.mac .sidebar a:not(.brand) { height: 32px; padding: 0 10px; gap: 9px; border-radius: 8px; font-weight: 500; color: var(--ink); transition: background .15s; }
+html.mac .sidebar a:not(.brand):hover { background: var(--hover); }
+html.mac .sidebar a.active { background: none; color: var(--ink); font-weight: 600; }
+html.mac .sidebar .ti { opacity: 1; filter: none; color: var(--muted); transition: color .2s, transform .3s var(--spring); }
+html.mac .sidebar .ti svg { width: 18px; height: 18px; }
+html.mac .sidebar a.active .ti { color: var(--navy); transform: scale(1.08); }
+html.mac .sidebar .badge { min-width: 18px; height: 18px; border-radius: 9px; font-size: .75rem; line-height: 18px; font-weight: 600; background: var(--select); color: var(--muted); }
+html.mac .side-foot { display: block; margin: auto 6px 2px; padding: 10px; border-radius: 10px; background: var(--hover); font-size: .86rem; }
+html.mac .side-foot b { display: flex; justify-content: space-between; font-weight: 600; }
+html.mac .side-foot b span { color: var(--muted); font-weight: 500; }
+html.mac .side-foot .progress { height: 5px; margin-top: 7px; background: var(--select); }
+
+/* ---------- toolbar chips ---------- */
+html.mac .chip { padding: 3px 9px 3px 7px; background: var(--card); box-shadow: none; font-size: .93rem; font-weight: 600; }
+html.mac .chip svg { width: 15px; height: 15px; }
+
+/* ---------- panels ---------- */
+html.mac .card { background: var(--card); box-shadow: none; padding: 16px 18px; margin-bottom: 12px; }
+html.mac .page-title { font-size: 1.85rem; font-weight: 700; margin: 0 0 14px; }
+html.mac .page-title small { font-size: .93rem; font-weight: 400; margin-top: 2px; }
+html.mac .section-title { margin: 26px 2px 10px; font-size: 1.2rem; font-weight: 650; }
+html.mac .section-title small { font-weight: 400; }
+
+/* ---------- buttons: flat, compact, a little spring on press ---------- */
+html.mac .btn { padding: 8px 16px; border-radius: 9px; font-weight: 600; transition: transform .25s var(--spring), filter .15s, background .15s; }
+html.mac .btn:hover:not(:disabled) { filter: brightness(1.06); }
+html.mac .btn:active:not(:disabled) { transform: scale(.97); filter: brightness(.94); transition-duration: .06s; }
+html.mac .btn.primary, html.mac .btn.danger { box-shadow: none; }
+html.mac .btn.primary:active:not(:disabled) { box-shadow: none; }
+html.mac .btn.secondary { background: var(--surface-2); }
+html.mac .btn.ghost { box-shadow: inset 0 0 0 1px var(--line); }
+html.mac .btn.danger-ghost { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--red) 35%, transparent); }
+html.mac .btn.wide { padding: 11px; font-size: 1.07rem; border-radius: 11px; }
+html.mac .btn kbd { border-width: 1px; font-weight: 600; }
+html.mac .icon-btn { width: 30px; height: 30px; border-radius: 8px; transition: background .15s; }
+html.mac .icon-btn:hover { background: var(--hover); }
+html.mac .icon-btn svg { width: 18px; height: 18px; }
+html.mac .back { margin: 0 0 10px -6px; padding: 3px 8px; border-radius: 7px; font-weight: 500; transition: background .15s; }
+html.mac .back:hover { background: var(--hover); }
+
+/* ---------- home ---------- */
+html.mac .hero { padding: 6px 2px 18px; background: none; }
+html.mac .mascot { width: 60px; height: 60px; }
+html.mac .bubble { margin-top: 2px; padding: 4px 0 0 4px; background: none; }
+html.mac .bubble::before { display: none; }
+html.mac .bubble b { font-size: 1.7rem; font-weight: 700; }
+html.mac .bubble p { font-size: 1rem; }
+html.mac .bubble p b { font-size: inherit; font-weight: 600; color: var(--ink); letter-spacing: 0; }
+html.mac .hero-stats { margin: 16px 0 4px; padding: 14px 16px; border-radius: var(--radius); background: var(--card); }
+html.mac .goal-ring, html.mac .goal-ring svg { width: 76px; height: 76px; }
+html.mac .ring-bg { stroke: var(--surface-2); stroke-width: 7; }
+html.mac .ring-fg { stroke-width: 7; animation: ring-in .9s var(--ease) .15s backwards; }
+@keyframes ring-in { from { stroke-dashoffset: var(--c); } }
+html.mac .ring-label b { font-size: 1.5rem; font-weight: 650; }
+html.mac .week { gap: 7px; }
+html.mac .week i { width: 22px; height: 22px; }
+html.mac .week i svg { width: 13px; height: 13px; }
+html.mac .week li i { animation: pop .45s var(--spring) backwards; animation-delay: calc(.1s + var(--d, 0) * 35ms); }
+html.mac .week .today i { box-shadow: 0 0 0 2px var(--card), 0 0 0 3.5px var(--navy-soft); }
+html.mac .hero-actions { margin-top: 12px; }
+html.mac .hero-actions .btn { padding: 11px 16px; font-size: 1.07rem; border-radius: 11px; }
+html.mac .today-card { padding: 14px 16px; }
+html.mac .steps { gap: 2px; }
+html.mac .steps a { padding: 7px 8px; border-radius: 8px; background: none; transition: background .15s; }
+html.mac .steps a:hover { background: var(--hover); box-shadow: none; }
+html.mac .steps .check { width: 20px; height: 20px; border-width: 1.5px; transition: background .25s, border-color .25s, transform .35s var(--spring); }
+html.mac .steps .check svg { width: 13px; height: 13px; }
+html.mac .steps .done .check { transform: scale(1.05); }
+html.mac .step-label { font-weight: 500; }
+html.mac .resume-card { border: 0; box-shadow: inset 0 0 0 1.5px var(--gold); }
+
+/* ---------- path: a light list instead of stacked cards ---------- */
+html.mac li.stage-head.stage-head { margin: 6px 0 8px; padding: 10px 12px; background: var(--card); color: var(--ink); } /* outranks the dark-theme colour in styles.css */
+html.mac .stage-level { width: 40px; height: 40px; border-radius: 11px; background: var(--navy); color: var(--primary-ink); font-size: 1.07rem; }
+html.mac .stage-head small { color: var(--muted); opacity: 1; }
+html.mac .stage-count { color: var(--muted); font-weight: 600; }
+html.mac .path::before { left: 37px; width: 2px; background: var(--line); }
+html.mac .node { margin: 0 0 2px; }
+html.mac .node-link { gap: 14px; padding: 8px 12px 8px 8px; border-radius: 12px; background: none; box-shadow: none; transition: background .15s, transform .3s var(--spring); }
+html.mac a.node-link:hover { background: var(--hover); transform: none; box-shadow: none; }
+html.mac a.node-link:active { transform: scale(.99); }
+html.mac .node-art { width: 58px; height: 58px; background: var(--bg); border-radius: 14px; }
+html.mac .node-text b { font-family: var(--sans); font-size: 1.07rem; font-weight: 600; }
+html.mac .node-text small { font-size: .75rem; font-weight: 600; }
+html.mac .node.current .node-link { background: var(--card); box-shadow: inset 0 0 0 1.5px var(--gold); }
+html.mac .node.locked .node-link { background: none; }
+html.mac .start-tag { font-weight: 600; }
+html.mac .milestone { margin: 6px 0 10px; padding: 8px 12px; border: 1px dashed var(--line); border-radius: 12px; background: none; }
+html.mac .milestone .trophy { width: 58px; height: 34px; }
+html.mac .milestone .trophy svg { width: 22px; height: 22px; }
+html.mac .milestone.reached { border: 0; background: var(--gold-soft); }
+
+/* ---------- unit intro, lessons ---------- */
+html.mac .unit-cover { width: 96px; height: 96px; }
+html.mac .unit-intro h1 { font-size: 1.85rem; font-weight: 700; }
+html.mac .tip { border-radius: 10px; padding: 12px 14px; }
+html.mac .word-chips button { padding: 4px 10px; background: var(--surface); transition: border-color .15s, transform .25s var(--spring); }
+html.mac .word-chips button:active { transform: scale(.95); }
+html.mac .fr-word { font-size: 2.6rem; }
+html.mac .example { border-radius: 10px; background: var(--surface-2); }
+
+/* ---------- sessions ---------- */
+html.mac .session-head { margin: 0 0 22px; }
+html.mac .progress { height: 8px; border-radius: 4px; }
+html.mac .progress i { border-radius: 4px; background: var(--green); transition: width .55s var(--spring); }
+html.mac .progress.thin { height: 5px; }
+html.mac .instr { font-size: 1.35rem; font-weight: 650; margin-bottom: 18px; }
+html.mac .prompt-pic { background: var(--card); box-shadow: none; }
+html.mac .option, html.mac .tile, html.mac .word, html.mac .letter, html.mac .spot-word, html.mac .g-btn {
+  border-width: 1px; box-shadow: none; transition: border-color .15s, background .15s, transform .28s var(--spring);
+}
+html.mac .option { min-height: 54px; border-radius: 11px; font-weight: 500; }
+html.mac .option kbd { width: 20px; height: 20px; border-width: 1px; border-radius: 6px; font-weight: 600; }
+html.mac .option:hover:not(:disabled), html.mac .tile:hover:not(:disabled), html.mac .word:hover:not(:disabled),
+html.mac .letter:hover:not(:disabled) { border-color: color-mix(in srgb, var(--navy) 45%, var(--line)); background: color-mix(in srgb, var(--navy-soft) 35%, var(--surface)); }
+html.mac .option:active:not(:disabled), html.mac .tile:active:not(:disabled), html.mac .word:active:not(:disabled),
+html.mac .letter:active:not(:disabled), html.mac .spot-word:active:not(:disabled), html.mac .g-btn:active:not(:disabled) { transform: scale(.97); box-shadow: none; transition-duration: .06s; }
+html.mac .option.selected, html.mac .tile.selected, html.mac .spot-word.selected { box-shadow: inset 0 0 0 1px var(--navy); }
+html.mac .option.right { box-shadow: inset 0 0 0 1px var(--green); animation: nod .45s var(--spring); }
+html.mac .option.wrong { box-shadow: inset 0 0 0 1px var(--red); animation: shake .35s; }
+@keyframes nod { 40% { transform: scale(1.03); } }
+html.mac .tile.matched { box-shadow: none; }
+html.mac .word, html.mac .spot-word { border-radius: 9px; }
+html.mac .letter { border-radius: 10px; }
+html.mac .speaker { transition: transform .28s var(--spring), filter .15s; }
+html.mac .speaker:hover { filter: brightness(1.06); }
+html.mac .speaker:active { transform: scale(.92); transition-duration: .06s; }
+html.mac .speaker.huge { box-shadow: none; border-radius: 24px; }
+html.mac .mic { box-shadow: none; transition: transform .28s var(--spring); }
+html.mac .mic:active { transform: scale(.94); }
+html.mac #answer { padding: 12px 14px; border-width: 1px; border-radius: 11px; }
+html.mac #answer:focus { border-color: var(--navy); box-shadow: 0 0 0 3px color-mix(in srgb, var(--navy) 22%, transparent); }
+html.mac .answer-line { border-bottom-width: 1px; background: repeating-linear-gradient(transparent 0 52px, var(--line) 52px 53px); }
+html.mac .feedback { border-radius: 12px; animation: sheet .42s var(--spring); }
+@keyframes sheet { from { opacity: 0; transform: translateY(18px) scale(.98); } }
+html.mac .feedback h3 { font-size: 1.2rem; }
+html.mac .gender-list li { border-width: 1px; border-radius: 11px; }
+html.mac .line { border-radius: 12px; }
+html.mac .line.now { box-shadow: 0 0 0 2px var(--gold); }
+html.mac .speak, html.mac .speak-result { border-radius: 12px; }
+
+/* ---------- results, review, progress, settings ---------- */
+html.mac .result-card { padding: 28px 24px; background: none; }
+html.mac .result-card .mascot { width: 92px; height: 92px; }
+html.mac .result-card h1 { font-size: 1.85rem; font-weight: 700; }
+html.mac .result-grid div { border-radius: 11px; background: var(--card); animation: rise .5s var(--ease) backwards; }
+html.mac .result-grid div:nth-child(2) { animation-delay: .08s; }
+html.mac .result-grid div:nth-child(3) { animation-delay: .16s; }
+html.mac .result-grid b { font-weight: 650; font-variant-numeric: tabular-nums; }
+html.mac .celebrate { border-radius: 11px; animation: sheet .5s var(--spring) .25s backwards; }
+html.mac .big-num { font-size: 3.4rem; font-weight: 700; }
+html.mac .box .bar { border-radius: 8px; }
+html.mac .box .bar i { border-radius: 8px 8px 0 0; transform-origin: bottom; animation: grow .7s var(--ease) backwards; }
+@keyframes grow { from { transform: scaleY(0); } }
+html.mac .level-badge { width: 60px; height: 60px; border-radius: 17px; font-size: 1.7rem; }
+html.mac .stat-grid { gap: 10px; margin-bottom: 12px; }
+html.mac .stat b { font-weight: 650; font-variant-numeric: tabular-nums; }
+html.mac .heat i { animation: fade-in .4s ease backwards; }
+html.mac .badge-card { border-radius: 12px; background: var(--surface-2); transition: transform .3s var(--spring); }
+html.mac .badge-card:not(.locked):hover { transform: translateY(-2px) scale(1.02); }
+html.mac .badge-card b { font-family: var(--sans); font-weight: 600; }
+html.mac .medal { width: 52px; height: 52px; }
+html.mac .medal span { width: 38px; height: 38px; font-size: 1.4rem; }
+html.mac .timeline b { font-family: var(--sans); font-weight: 600; }
+html.mac .setting { padding: 9px 0; }
+html.mac .setting b { font-weight: 500; }
+html.mac .setting small { font-size: .86rem; }
+html.mac .setting input[type=text], html.mac .setting select, html.mac .setting input[type=time] { padding: 5px 9px; border-width: 1px; border-radius: 7px; background: var(--surface); }
+html.mac .switch { width: 38px; height: 22px; border-radius: 11px; }
+html.mac .switch::after { top: 2px; left: 2px; width: 18px; height: 18px; transition: transform .3s var(--spring); }
+html.mac .switch:checked::after { transform: translateX(16px); }
+html.mac .goals { gap: 8px; }
+html.mac .goal-opt { padding: 11px 13px; border-width: 1px; border-radius: 11px; transition: border-color .15s, background .15s, transform .28s var(--spring); }
+html.mac .goal-opt:active { transform: scale(.98); }
+html.mac .goal-opt.selected { box-shadow: inset 0 0 0 1px var(--navy); }
+html.mac .note-warn { border-radius: 9px; }
+
+/* ---------- toasts ---------- */
+html.mac #toasts { top: calc(var(--titlebar) + 8px); right: 16px; width: 320px; }
+html.mac .toast {
+  padding: 10px 14px; border-radius: 12px; background: color-mix(in srgb, var(--card) 86%, transparent); color: var(--ink);
+  backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px);
+  box-shadow: 0 0 0 1px var(--line), 0 12px 32px rgba(0, 0, 0, .16); animation: toast-in .45s var(--spring);
+}
+@keyframes toast-in { from { opacity: 0; transform: translateX(40px); } }
+html.mac .toast.out { transform: translateX(40px); }
+
+/* ---------- entrances: each page rises in piece by piece, each exercise slides in ---------- */
+@keyframes rise { from { opacity: 0; transform: translateY(12px); } }
+@keyframes slide-in { from { opacity: 0; transform: translateX(28px); } }
+@keyframes fade-in { from { opacity: 0; } }
+html.mac main.enter-page > * { animation: rise .42s var(--ease) backwards; }
+html.mac main.enter-page > :nth-child(2) { animation-delay: 50ms; }
+html.mac main.enter-page > :nth-child(3) { animation-delay: 100ms; }
+html.mac main.enter-page > :nth-child(4) { animation-delay: 150ms; }
+html.mac main.enter-page > :nth-child(n+5) { animation-delay: 200ms; }
+html.mac main.enter-next > .exercise { animation: slide-in .38s var(--ease) backwards; }
+html.mac main.enter-next > .session-foot { animation: fade-in .3s ease .12s backwards; }
+html.mac main.enter-next > .session-head { animation: none; }
+html.mac main.enter-next .options > *, html.mac main.enter-next .letters > *, html.mac main.enter-next .bank > * { animation: rise .36s var(--ease) backwards; animation-delay: calc(60ms + var(--d, 0) * 30ms); }
+html.mac main.enter-pop > * { animation: sheet .5s var(--spring) backwards; }

@@ -14,6 +14,29 @@
   function save() {
     try { localStorage.setItem(C.STORAGE_KEY, JSON.stringify(state)); }
     catch (e) { toast('⚠️', 'Could not save progress', 'Browser storage is unavailable.'); }
+    postStatus();
+  }
+
+  // ---------- Mac app bridge: the menu bar item, reminders and Dock badge are drawn by macos/main.swift ----------
+  const MAC = (() => { try { return window.webkit.messageHandlers.coco || null; } catch (e) { return null; } })();
+  const toMac = (msg) => { if (MAC) { try { MAC.postMessage(msg); } catch (e) { /* not in the Mac app */ } } };
+  let macInfo = { notifications: 'unknown', loginItem: false }; // what the Mac app last reported about itself
+  if (MAC) {
+    document.documentElement.classList.add('mac'); // the desktop look in css/mac.css
+    // No web-page context menu (Reload, Inspect Element) in the app; text fields keep theirs.
+    document.addEventListener('contextmenu', (e) => { if (!e.target.closest('input, textarea')) e.preventDefault(); });
+  }
+  // Tells the Mac app where today stands; sent after every save and page change.
+  function postStatus() {
+    if (!MAC) return;
+    const st = C.streakStatus(state), next = D.units[nextUnitIndex()], w = C.wordOfDay(state, D);
+    toMac({
+      type: 'status', streak: st.streak, freezes: st.freezes, atRisk: st.atRisk, xpToday: C.todayXp(state), goal: state.settings.dailyGoal,
+      due: C.dueWords(state).length, nextId: next.id, nextTitle: next.title, allDone: C.completedUnits(state, D) === D.units.length,
+      resume: !!savedCheckpoint(), word: { id: w.id, fr: w.fr, en: w.en },
+      reminder: state.settings.reminder, reminderTime: state.settings.reminderTime, menuBar: state.settings.menuBar,
+      theme: state.settings.theme, // the window (titlebar, sidebar material) follows the app's appearance
+    });
   }
 
   // ---------- checkpoint: the practice or review in progress, so leaving doesn't lose it ----------
@@ -242,6 +265,14 @@
     },
     // Invalidates pending results (e.g. after navigation) and discards an unfinished recording.
     cancel() { this.token++; Mic.abort(); },
+    // Frees the recognizer's memory (the Mac app does this while only its menu bar item is showing).
+    unload() {
+      if (!this.worker) return;
+      this.worker.terminate();
+      Object.assign(this, { worker: null, loading: null, backend: null });
+      for (const p of this.pending.values()) p.reject(new Error('Speech recognition was stopped.'));
+      this.pending.clear();
+    },
   };
 
   // ---------- microphone (kept warm while practising) ----------
@@ -531,18 +562,58 @@
   function renderChrome(tab) {
     const streak = C.currentStreak(state);
     const doneToday = C.todayXp(state) > 0;
+    postStatus();
     $('#chips').innerHTML = `
+      ${state.freezes ? `<span class="chip freeze" title="${FREEZE_TIP}">❄️<b>${state.freezes}</b></span>` : ''}
       <span class="chip streak ${doneToday ? 'lit' : ''}" title="Day streak">${ICON.flame}<b>${streak}</b></span>
       <span class="chip xp" title="Total XP">${ICON.star}<b>${state.xp}</b></span>`;
     const due = C.dueWords(state).length;
     const badge = $('#due-badge');
     badge.hidden = !due; badge.textContent = due > 99 ? '99+' : due;
     $$('#tabbar a').forEach((a) => a.classList.toggle('active', a.dataset.tab === tab));
+    const tabIndex = ['home', 'review', 'progress', 'settings'].indexOf(tab);
+    if (tabIndex >= 0) document.documentElement.style.setProperty('--tab', tabIndex); // the sidebar selection slides there
+    const xp = C.todayXp(state), goal = state.settings.dailyGoal;
+    $('#side-foot').innerHTML = `<b>Today <span>${xp} / ${goal} XP</span></b><div class="progress"><i style="width:${Math.min(100, (xp / goal) * 100)}%"></i></div>`;
     document.body.classList.toggle('in-session', tab === 'session');
   }
 
   // ---------- router ----------
   let session = null; // active learn/practice session (in memory)
+  let routeName = '', renderedDay = null;
+  // Entrance animation for what was just rendered (css/mac.css): 'page' rises in piece by piece,
+  // 'next' slides an exercise in, 'pop' springs the results up.
+  let entered = false, enterTimer = 0;
+  function enter(kind) {
+    entered = true;
+    view.classList.remove('enter-page', 'enter-next', 'enter-pop');
+    void view.offsetWidth; // restart the animation
+    view.classList.add(`enter-${kind}`);
+    $$('.options, .letters, .bank', view).forEach((box) => Array.from(box.children).forEach((el, i) => el.style.setProperty('--d', i)));
+    clearTimeout(enterTimer); // afterwards, moving things around (word tiles) must not replay it
+    enterTimer = setTimeout(() => view.classList.remove('enter-page', 'enter-next', 'enter-pop'), 900);
+  }
+  // Counts a number up to its value: <b data-count="23">.
+  function countUp(root = view) {
+    if (matchMedia('(prefers-reduced-motion: reduce)').matches || document.documentElement.classList.contains('snapshot')) return;
+    $$('[data-count]', root).forEach((el) => {
+      const to = Number(el.dataset.count), prefix = el.dataset.prefix || '', t0 = performance.now(), ms = 700;
+      const tick = (t) => {
+        const p = Math.min(1, (t - t0) / ms);
+        el.textContent = prefix + Math.round(to * (1 - Math.pow(1 - p, 3)));
+        if (p < 1 && el.isConnected) requestAnimationFrame(tick);
+      };
+      el.textContent = prefix + '0';
+      requestAnimationFrame(tick);
+    });
+  }
+  const FREEZE_TIP = `Streak freezes: each one covers a day you miss. You earn one every ${C.FREEZE_EVERY} days in a row (up to ${C.MAX_FREEZES}).`;
+  // After midnight (the app was left open, or sat in the menu bar), the overview pages show the new day.
+  function dayCheck() {
+    if (renderedDay && renderedDay !== today() && !session && ['', 'review', 'progress'].includes(routeName)) route();
+  }
+  window.addEventListener('focus', dayCheck);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) dayCheck(); });
   function route() {
     Sound.stop();
     keyHandler = null;
@@ -551,9 +622,11 @@
     Mic.close(); // the mic only stays open while you stay on a speaking screen
     session = null;
     const [name, arg] = location.hash.replace(/^#\/?/, '').split('/');
-    const routes = { '': home, unit: unitIntro, learn, grammar: grammarLesson, dialogue: dialogueView, roleplay: roleplayView, practice: startPractice, review, progress, settings };
+    routeName = name; renderedDay = today();
+    const routes = { '': home, today: todayStart, unit: unitIntro, learn, grammar: grammarLesson, dialogue: dialogueView, roleplay: roleplayView, practice: startPractice, review, progress, settings };
     const fn = routes[name] || home;
-    try { fn(arg); }
+    entered = false;
+    try { fn(arg); if (!entered) enter('page'); }
     catch (err) {
       console.error(err);
       if (name !== 'settings') return go('#/settings');
@@ -562,6 +635,7 @@
     }
     view.focus({ preventScroll: true });
     window.scrollTo(0, 0);
+    $('.shell').scrollTop = 0; // the Mac app scrolls this pane, not the window
   }
   window.addEventListener('hashchange', route);
   const go = (hash) => { if (location.hash === hash) route(); else location.hash = hash; };
@@ -586,8 +660,8 @@
       const d = C.addDays(t, -i);
       const xp = (state.daily[d] && state.daily[d].xp) || 0;
       const dow = new Date(d + 'T12:00').toLocaleDateString('fr-FR', { weekday: 'narrow' });
-      const cls = xp >= state.settings.dailyGoal ? 'goal' : xp > 0 ? 'some' : '';
-      out += `<li class="${cls} ${i === 0 ? 'today' : ''}" title="${d}: ${xp} XP"><i>${cls === 'goal' ? ICON.check : ''}</i><span>${dow.toUpperCase()}</span></li>`;
+      const cls = xp >= state.settings.dailyGoal ? 'goal' : xp > 0 ? 'some' : state.frozen[d] ? 'frozen' : '';
+      out += `<li class="${cls} ${i === 0 ? 'today' : ''}" style="--d:${6 - i}" title="${d}: ${cls === 'frozen' ? 'covered by a streak freeze' : xp + ' XP'}"><i>${cls === 'goal' ? ICON.check : cls === 'frozen' ? '❄️' : ''}</i><span>${dow.toUpperCase()}</span></li>`;
     }
     return `<ol class="week">${out}</ol>`;
   }
@@ -595,7 +669,7 @@
     const r = size / 2 - 7, c = 2 * Math.PI * r, p = Math.min(value / goal, 1);
     return `<svg class="ring" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" aria-hidden="true">
       <circle cx="${size / 2}" cy="${size / 2}" r="${r}" class="ring-bg"/>
-      <circle cx="${size / 2}" cy="${size / 2}" r="${r}" class="ring-fg ${p >= 1 ? 'done' : ''}" stroke-dasharray="${c}" stroke-dashoffset="${c * (1 - p)}" transform="rotate(-90 ${size / 2} ${size / 2})"/>
+      <circle cx="${size / 2}" cy="${size / 2}" r="${r}" class="ring-fg ${p >= 1 ? 'done' : ''}" style="--c:${c}" stroke-dasharray="${c}" stroke-dashoffset="${c * (1 - p)}" transform="rotate(-90 ${size / 2} ${size / 2})"/>
     </svg>`;
   }
   function nextUnitIndex() {
@@ -612,7 +686,8 @@
     const u = D.units[nextUnitIndex()];
     return { href: `#/learn/${u.id}`, label: `🎤 Say the words of “${u.title}” aloud`, dialogue: false };
   }
-  function todayPlan() {
+  // Today's three steps. start: where "start today's session" goes for that step (href when absent).
+  function planSteps() {
     const day = state.daily[today()] || {};
     const due = C.dueWords(state).length;
     const next = D.units[nextUnitIndex()];
@@ -620,11 +695,25 @@
     const hasWords = Object.keys(state.words).length > 0;
     const steps = [
       // Nothing to review yet (or nothing due) counts as done.
-      { done: hasWords && ((day.reviews || 0) > 0 || !due), na: !hasWords, href: hasWords ? '#/review' : `#/unit/${next.id}`, label: due ? `🔁 Review ${due} word${due === 1 ? '' : 's'}` : hasWords ? '🔁 Review — all caught up' : '🔁 Review — starts after your first lesson', mins: 5 },
+      { done: hasWords && ((day.reviews || 0) > 0 || !due), na: !hasWords, href: hasWords ? '#/review' : `#/unit/${next.id}`, start: due ? '#/review/start' : null, label: due ? `🔁 Review ${due} word${due === 1 ? '' : 's'}` : hasWords ? '🔁 Review — all caught up' : '🔁 Review — starts after your first lesson', mins: 5 },
       { done: (day.lessons || 0) > 0, href: `#/unit/${next.id}`, label: `📘 ${esc(next.title)}`, mins: 15 },
       { done: drill.dialogue ? (day.listening || 0) > 0 : (day.spoken || 0) > 0, href: drill.href, label: esc(drill.label), mins: 10 },
     ];
-    const mins = Math.round(day.minutes || 0);
+    return steps;
+  }
+  // #/today: one click (the home button, ↩, the menu bar, a reminder) goes straight to what's next today —
+  // the practice you left unfinished, else the first step of the plan not done yet.
+  function todayStart() {
+    const cp = savedCheckpoint();
+    const step = planSteps().find((st) => !st.done && !st.na);
+    const allDone = C.completedUnits(state, D) === D.units.length;
+    const hash = cp ? (cp.kind === 'lesson' ? `#/practice/${cp.unit}` : '#/review/resume')
+      : step ? step.start || step.href : allDone ? '#/review' : `#/unit/${D.units[nextUnitIndex()].id}`;
+    location.replace(hash); // not kept in history, so "back" doesn't bounce forward again
+  }
+  function todayPlan() {
+    const steps = planSteps();
+    const mins = Math.round((state.daily[today()] || {}).minutes || 0);
     return `<section class="card today-card">
       <div class="today-head"><h3>Today's 30 minutes</h3><span class="today-min">${mins} min studied</span></div>
       <ol class="steps">${steps.map((st) => `<li class="${st.done ? 'done' : st.na ? 'na' : ''}"><a href="${st.href}">
@@ -634,11 +723,14 @@
   function home() {
     renderChrome('home');
     const xpToday = C.todayXp(state), goal = state.settings.dailyGoal;
-    const streak = C.currentStreak(state);
+    const ss = C.streakStatus(state), streak = ss.streak;
     const next = D.units[nextUnitIndex()];
     const allDone = C.completedUnits(state, D) === D.units.length;
+    const cp = savedCheckpoint();
+    const step = planSteps().find((st) => !st.done && !st.na);
     let bubble;
-    if (xpToday >= goal) bubble = `Objectif atteint ! You hit today's goal. À demain !`;
+    if (ss.atRisk && xpToday === 0) bubble = `❄️ A streak freeze is covering the day${ss.atRisk > 1 ? 's' : ''} you missed. Study today and your <b>${streak}-day</b> streak goes on.`;
+    else if (xpToday >= goal) bubble = `Objectif atteint ! You hit today's goal. À demain !`;
     else if (streak > 0 && xpToday === 0) bubble = `Keep your <b>${streak}-day</b> streak alive — one lesson is enough.`;
     else if (!state.stats.lessons) bubble = `I'm Coco. Step by step, we'll get you to NCLC 7. Let's start!`;
     else bubble = `${goal - xpToday} XP to go for today's goal. Allez !`;
@@ -688,20 +780,23 @@
         <div class="hero-stats">
           <div class="goal-ring">${ring(xpToday, goal)}<div class="ring-label"><b>${xpToday}</b><small>/ ${goal} XP</small></div></div>
           <div class="hero-side">
-            <div class="streak-line">${ICON.flame}<b>${streak}</b> day streak <small>· best ${state.streak.best}</small></div>
+            <div class="streak-line">${ICON.flame}<b>${streak}</b> day streak <small>· best ${state.streak.best}</small>${ss.freezes ? `<span class="freeze-tag" title="${FREEZE_TIP}">❄️ ${ss.freezes}</span>` : ''}</div>
             ${weekStrip()}
           </div>
         </div>
         <div class="hero-actions">
-          ${allDone ? `<a class="btn primary" href="#/review">Practise your words</a>` : `<a class="btn primary" href="#/unit/${next.id}">${state.units[next.id] ? 'Continue' : 'Start'}: ${esc(next.title)}</a>`}
+          ${cp ? `<a class="btn primary" href="#/today">Continue where you left off <kbd>↩</kbd></a>`
+            : step ? `<a class="btn primary" href="#/today">${step.label} <kbd>↩</kbd></a>`
+            : allDone ? `<a class="btn primary" href="#/review">Practise your words</a>` : `<a class="btn primary" href="#/unit/${next.id}">Today's plan is done — keep going: ${esc(next.title)}</a>`}
         </div>
       </section>
-      ${resumeCard(savedCheckpoint())}
+      ${resumeCard(cp)}
       ${todayPlan()}
       <h2 class="section-title">Your path to NCLC 7 <small>${C.completedUnits(state, D)} / ${D.units.length} units</small></h2>
       <ol class="path">${path}</ol>
       <p class="muted small center">More stages (A2, exam trainer, B1, B2) are on the way — see ROADMAP.md.</p>`;
     bindResumeCard();
+    if (cp || step) keyHandler = (e) => { if (e.key === 'Enter') { e.preventDefault(); go('#/today'); } };
   }
 
   // ---------- unit intro ----------
@@ -1060,8 +1155,10 @@
   function review(arg) {
     const cp = savedCheckpoint();
     if (arg === 'resume' && cp && cp.kind === 'review') return runSession({ kind: 'review', resume: cp });
-    renderChrome('review');
     const due = C.dueWords(state);
+    const start = (ids) => runSession({ kind: 'review', queue: C.buildReview(D, ids) });
+    if (arg === 'start' && due.length) return start(due.slice(0, 12)); // straight in, from "today's session"
+    renderChrome('review');
     const learned = Object.keys(state.words).length;
     const mastered = C.masteredCount(state);
     let body;
@@ -1090,7 +1187,6 @@
         <p class="small">${learned} words learned · ${mastered} mastered</p>
       </section>`;
     if (cp && cp.kind === 'review') { $('.review-hero').insertAdjacentHTML('beforebegin', resumeCard(cp)); bindResumeCard(); }
-    const start = (ids) => runSession({ kind: 'review', queue: C.buildReview(D, ids) });
     if ($('#go-review')) $('#go-review').onclick = () => start(due.slice(0, 12));
     if ($('#go-weak')) $('#go-weak').onclick = () => start(C.weakestWords(state, 10));
   }
@@ -1128,6 +1224,7 @@
     const renderers = { fill: exFill, speak: exSpeak, shadow: exSpeak, 'mc-fr-en': exMC, 'mc-en-fr': exMC, listen: exMC, type: exType, match: exMatch, order: exOrder,
       dictation: exDictation, gender: exGender, spot: exSpot, chunks: exChunks };
     renderers[ex.type](ex);
+    enter('next');
   }
 
   // Records the outcome, shows feedback and queues one retry for mistakes.
@@ -1653,7 +1750,7 @@
     keyHandler = null;
     const pct = Math.round(res.score * 100);
     const mins = Math.max(1, Math.round((Date.now() - s.started) / 60000));
-    const celebrate = res.perfect || res.goalReachedNow || res.achievements.length || res.milestones.length;
+    const celebrate = res.perfect || res.goalReachedNow || res.freezeEarned || res.achievements.length || res.milestones.length;
     Sound.sfx('win');
     if (celebrate) later(confetti, 150);
     const goal = state.settings.dailyGoal, xpToday = C.todayXp(state);
@@ -1663,13 +1760,15 @@
         <h1>${s.kind === 'lesson' ? (res.perfect ? 'Parfait !' : 'Leçon terminée !') : 'Révision terminée !'}</h1>
         ${s.kind === 'lesson' ? `<p>${stars(res.stars)}</p><p class="sub">${esc(s.unit.title)} · ${esc(s.unit.en)}</p>` : ''}
         <div class="result-grid">
-          <div><b>+${res.xp}</b><small>XP earned</small></div>
+          <div><b data-count="${res.xp}" data-prefix="+">+${res.xp}</b><small>XP earned</small></div>
           <div><b>${pct}%</b><small>Accuracy</small></div>
           <div><b>${mins}</b><small>min${mins === 1 ? '' : 's'}</small></div>
         </div>
         <div class="goal-bar"><div class="progress"><i style="width:${Math.min(100, (xpToday / goal) * 100)}%"></i></div>
           <small>${xpToday >= goal ? `🎯 Daily goal reached (${xpToday}/${goal} XP)` : `${xpToday}/${goal} XP today`}</small></div>
         ${res.goalReachedNow ? `<div class="celebrate"><span class="celebrate-i">🎯</span><div><b>Objectif du jour atteint !</b><small>Daily goal reached — your streak is now ${C.currentStreak(state)} day${C.currentStreak(state) === 1 ? '' : 's'}.</small></div></div>` : ''}
+        ${res.freezeEarned ? `<div class="celebrate"><span class="celebrate-i">❄️</span><div><b>Streak freeze earned!</b><small>${state.streak.current} days in a row. It will cover one day you miss.</small></div></div>` : ''}
+        ${res.freezesUsed ? `<div class="celebrate"><span class="celebrate-i">❄️</span><div><b>Streak saved</b><small>A streak freeze covered the day you missed — ${state.streak.current} days and counting.</small></div></div>` : ''}
         ${res.milestones.map((m) => `<div class="celebrate milestone-won">${ICON.trophy}<div><b>Milestone: ${esc(m.title)}</b><small>${esc(m.en)}</small></div></div>`).join('')}
         ${res.achievements.length ? `<h3>New achievement${res.achievements.length > 1 ? 's' : ''}</h3><div class="badges new">${res.achievements.map(badge).join('')}</div>` : ''}
         <div class="row">
@@ -1678,6 +1777,8 @@
         </div>
       </section>`;
     session = null;
+    enter('pop');
+    countUp();
     keyHandler = (e) => { if (e.key === 'Enter') go('#/'); };
   }
 
@@ -1789,6 +1890,17 @@
         <label class="setting"><div><b>Appearance</b><small>Light, dark or match your system</small></div>
           <select id="theme">${['auto', 'light', 'dark'].map((t) => `<option value="${t}" ${s.theme === t ? 'selected' : ''}>${t[0].toUpperCase() + t.slice(1)}</option>`).join('')}</select></label>
       </section>
+      ${MAC ? `<section class="card">
+        <h3>On this Mac</h3>
+        ${toggle('reminder', 'Daily reminder', 'A notification if you have not studied yet, and another before a streak runs out')}
+        <label class="setting"><div><b>Reminder time</b><small>Pick a moment you are usually free</small></div>
+          <input type="time" id="reminder-time" value="${esc(s.reminderTime)}" ${s.reminder ? '' : 'disabled'}></label>
+        ${s.reminder && macInfo.notifications === 'denied' ? `<p class="note-warn small">⚠️ macOS notifications are off for Coco · French, so Coco shows its own reminder instead — only while it is running (keep it in the menu bar, and open it at login). <button class="link-btn" id="open-notif">Open System Settings</button></p>` : ''}
+        ${toggle('menuBar', 'Keep Coco in the menu bar', 'Closing the window leaves your streak and a quick start in the menu bar. ⌘Q quits.')}
+        <label class="setting"><div><b>Open at login</b><small>Start quietly in the menu bar when you log in</small></div>
+          <input type="checkbox" class="switch" id="login-item" ${macInfo.loginItem ? 'checked' : ''}></label>
+        <div class="row"><button class="btn secondary" id="test-reminder">🔔 Send a test reminder</button></div>
+      </section>` : ''}
       <section class="card">
         <h3>Your data</h3>
         <p class="muted small">🔒 Everything stays private in this browser. Nothing is sent anywhere — the app works fully offline. Export a backup to move your progress to another browser.</p>
@@ -1801,7 +1913,13 @@
       <p class="muted small center">Audio: Kyutai TTS, generated offline (voices from CML-TTS, CC BY 4.0) · Illustrations drawn for this app</p>`;
     $('#name').onchange = (e) => { s.name = e.target.value.trim(); save(); toast('✓', 'Saved'); };
     $$('.goal-opt').forEach((b) => (b.onclick = () => { s.dailyGoal = Number(b.dataset.goal); save(); settings(); toast('🎯', `Daily goal: ${s.dailyGoal} XP`); }));
-    $$('.switch').forEach((c) => (c.onchange = () => { s[c.dataset.key] = c.checked; save(); }));
+    $$('.switch[data-key]').forEach((c) => (c.onchange = () => { s[c.dataset.key] = c.checked; save(); if (c.dataset.key === 'reminder') settings(); }));
+    if (MAC) {
+      $('#reminder-time').onchange = (e) => { if (!e.target.value) return; s.reminderTime = e.target.value.slice(0, 5); save(); toast('🔔', `Reminder at ${s.reminderTime}`); };
+      $('#login-item').onchange = (e) => toMac({ type: 'loginItem', on: e.target.checked });
+      $('#test-reminder').onclick = () => toMac({ type: 'testReminder' });
+      if ($('#open-notif')) $('#open-notif').onclick = () => toMac({ type: 'openNotificationSettings' });
+    }
     $('#theme').onchange = (e) => { s.theme = e.target.value; save(); applyTheme(); };
     $('#typing').onchange = (e) => { s.typing = e.target.value; save(); toast('✓', 'Writing exercises updated'); };
     $('#export').onclick = () => {
@@ -1831,6 +1949,20 @@
   }
 
   // ---------- boot ----------
+  // Called by the Mac app (macos/main.swift).
+  window.CocoMac = {
+    status() { dayCheck(); postStatus(); },
+    native(info) { // what the app reports back: notification permission, login item
+      const changed = JSON.stringify(info) !== JSON.stringify(macInfo);
+      macInfo = info;
+      if (changed && routeName === 'settings' && !(document.activeElement && document.activeElement.matches('input[type=text], input[type=time]'))) settings();
+    },
+    notify(icon, title, sub) { toast(icon, title, sub); },
+    play(id) { Sound.play(id, itemText(id)); },
+    go(hash) { go(hash); },
+    hidden() { Sound.stop(); Speech.cancel(); Mic.close(); Speech.unload(); }, // window closed, menu bar only
+    shown() { dayCheck(); if (Speech.enabled()) setTimeout(() => Speech.load().catch(() => {}), 1500); },
+  };
   applyTheme();
   window.addEventListener('storage', (e) => {
     if (e.key !== C.STORAGE_KEY) return;

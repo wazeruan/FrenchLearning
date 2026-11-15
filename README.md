@@ -22,7 +22,10 @@ device. Plan and stages: [ROADMAP.md](ROADMAP.md).
   back at the end.
 - **Speaking** 🎤: say words and sentences aloud; OpenAI's Whisper (base) recognizes them on your device and
   never lowers your score.
-- **Daily habit:** a 30-minute plan, spaced-repetition review, streaks, levels and achievements.
+- **Daily habit:** a 30-minute plan with a one-click start (↩ on the home page), spaced-repetition review,
+  streaks, levels and achievements. A **streak freeze**, earned every 7 days in a row, covers a day you miss.
+- **On the Mac:** a menu bar item with your streak, today's XP, a quick start and the word of the day; a daily
+  reminder (plus a last call before a streak ends); the number of words due on the Dock icon; optional open at login.
 - **Pick up where you left off:** a practice or review is saved after every answer and resumes where you stopped.
 
 ## Run it
@@ -48,5 +51,5 @@ node scripts/generate-art.mjs      # redraw the SVG covers
 
 Course content lives in `js/data.js`: add a unit, list its id in a stage's `units`, then generate its audio.
 Ids key saved progress, so never change or reuse them. Your own recordings can replace any clip
-(`assets/audio/<id>.m4a`). Logic is in `js/core.js` (no DOM, unit-tested), the UI in `js/app.js`, the Mac app
+(`assets/audio/<id>.m4a`). Logic is in `js/core.js` (no DOM, unit-tested), the UI in `js/app.js`, the Mac desktop look in `css/mac.css`, the Mac app
 in `macos/` and Android in `android/`.

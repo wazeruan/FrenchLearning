@@ -9,3 +9,4 @@ sheet.tmp.html
 models/
 vendor/
 build/
+__pycache__/
