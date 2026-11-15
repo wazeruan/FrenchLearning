@@ -49,6 +49,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKUI
     private var launchedAtLogin = false
     private var ownReminders: [Timer] = []    // today's reminders shown by the app itself (see showReminderPanel)
     private var reminderPanel: NSPanel?
+    private var lastMouseDown: NSEvent?
     private var keepInMenuBar: Bool {
         get { UserDefaults.standard.object(forKey: "menuBar") as? Bool ?? true }
         set { UserDefaults.standard.set(newValue, forKey: "menuBar") }
@@ -75,6 +76,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKUI
     func applicationDidFinishLaunching(_ notification: Notification) {
         buildMenu()
         if !isHeadless {
+            NSEvent.addLocalMonitorForEvents(matching: .leftMouseDown) { [weak self] e in self?.lastMouseDown = e; return e }
             // Started by macOS at login: stay in the menu bar instead of opening the window.
             let fourCC = { (s: String) in s.utf8.reduce(UInt32(0)) { ($0 << 8) | UInt32($1) } }
             let event = NSAppleEventManager.shared().currentAppleEvent
@@ -206,6 +208,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKUI
             lastNative = ""
             reportNative()
         case "testReminder": sendTestReminder()
+        case "drag":
+            // The page reports a press on an empty area: move the window with it, as long as the button is still down.
+            if let e = lastMouseDown, e.window === window, NSEvent.pressedMouseButtons & 1 == 1 { window.performDrag(with: e) }
         case "openNotificationSettings":
             if let url = URL(string: "x-apple.systempreferences:com.apple.Notifications-Settings.extension") { NSWorkspace.shared.open(url) }
         default: break

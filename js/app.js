@@ -25,6 +25,16 @@
     document.documentElement.classList.add('mac'); // the desktop look in css/mac.css
     // No web-page context menu (Reload, Inspect Element) in the app; text fields keep theirs.
     document.addEventListener('contextmenu', (e) => { if (!e.target.closest('input, textarea')) e.preventDefault(); });
+    // Drag the window by any empty area, like a native window background: anywhere that is not a
+    // control and not selectable text.
+    document.addEventListener('mousedown', (e) => {
+      if (e.button !== 0 || e.defaultPrevented || !(e.target instanceof Element)) return;
+      if (e.target.closest('a, button, input, textarea, select, label, summary, audio, [role], [tabindex="0"], [contenteditable], .switch, .setting')) return;
+      for (let el = e.target; el && el !== document.body; el = el.parentElement) if (el.onclick || el.onmousedown) return;
+      const cs = getComputedStyle(e.target);
+      if ((cs.webkitUserSelect || cs.userSelect) !== 'none') return;
+      toMac({ type: 'drag' });
+    });
   }
   // Tells the Mac app where today stands; sent after every save and page change.
   function postStatus() {
