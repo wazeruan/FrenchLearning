@@ -181,8 +181,26 @@
     sfx(kind) { // synthesized feedback tones, no files needed
       if (!state.settings.sfx) return;
       try {
-        this.ctx = this.ctx || new (window.AudioContext || window.webkitAudioContext)();
-        const ctx = this.ctx, t0 = ctx.currentTime;
+        const AC = window.AudioContext || window.webkitAudioContext;
+        if (!this.ctx || this.ctx.state === 'closed') this.ctx = new AC();
+        const ctx = this.ctx;
+        if (ctx.state === 'running') return this.tones(ctx, kind);
+        // WebKit (the Mac app) suspends the context when the window is hidden, the Mac sleeps or the mic
+        // takes over, and doesn't always resume it: resume it, or start a fresh one if that stalls.
+        let done = false;
+        ctx.resume().then(() => { if (!done) { done = true; this.tones(ctx, kind); } }, () => {});
+        setTimeout(() => {
+          if (done) return;
+          done = true;
+          ctx.close().catch(() => {});
+          this.ctx = new AC();
+          if (this.ctx.state === 'running') this.tones(this.ctx, kind);
+        }, 150);
+      } catch (e) { /* audio not available */ }
+    },
+    tones(ctx, kind) {
+      try {
+        const t0 = ctx.currentTime;
         const notes = { good: [[660, 0], [880, 0.09]], bad: [[220, 0], [185, 0.12]], win: [[523, 0], [659, 0.1], [784, 0.2], [1047, 0.3]], tap: [[520, 0]] }[kind];
         for (const [f, dt] of notes) {
           const o = ctx.createOscillator(), g = ctx.createGain();
